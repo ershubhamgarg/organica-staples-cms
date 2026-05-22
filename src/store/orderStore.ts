@@ -16,6 +16,7 @@ export interface Order {
   payment_method: string;
   total_amount: number;
   status: string;
+  rejection_reason?: string | null;
   created_at: string;
 }
 
@@ -24,7 +25,11 @@ interface OrderState {
   isLoading: boolean;
   error: string | null;
   fetchOrders: () => Promise<void>;
-  updateOrderStatus: (id: string, status: string) => Promise<void>;
+  updateOrderStatus: (
+    id: string,
+    status: string,
+    rejectionReason?: string,
+  ) => Promise<void>;
   getOrderById: (id: string) => Promise<Order | null>;
 }
 
@@ -48,11 +53,14 @@ export const useOrderStore = create<OrderState>()((set, get) => ({
     set({ orders: data || [], isLoading: false });
   },
 
-  updateOrderStatus: async (id, status) => {
+  updateOrderStatus: async (id, status, rejectionReason) => {
     set({ isLoading: true, error: null });
     const { data, error } = await supabase
       .from("orders")
-      .update({ status })
+      .update({
+        status,
+        rejection_reason: rejectionReason || null,
+      })
       .eq("id", id)
       .select();
 

@@ -40,8 +40,8 @@ export default function Header() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Admin User</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>admin@organica.com</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Pantry Admin</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>admin@amritya.com</div>
           </div>
           <img 
             src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 

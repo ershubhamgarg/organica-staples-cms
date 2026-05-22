@@ -1,19 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
+  --bg-primary: #020617; /* Deeper midnight for luxury feel */
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #1e293b;
   --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --accent-primary: #10b981; /* Organic green */
-  --accent-hover: #059669;
-  --accent-light: rgba(16, 185, 129, 0.1);
+  --text-secondary: #94a3b8;
+  --accent-primary: #059669; /* Slightly deeper, premium emerald */
+  --accent-hover: #047857;
+  --accent-light: rgba(5, 150, 105, 0.1);
   --danger: #ef4444;
   --warning: #f59e0b;
-  --border-color: #334155;
-  --glass-bg: rgba(30, 41, 59, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.05);
+  --border-color: #1e293b;
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.03);
   
   --radius-md: 12px;
   --radius-lg: 16px;

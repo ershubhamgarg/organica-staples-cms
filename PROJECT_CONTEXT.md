@@ -1,7 +1,7 @@
-# Organica Staples CMS - Project Context
+# Amritya Organics CMS - Project Context
 
 ## Project Overview
-Organica Staples CMS is a management dashboard for an organic food store. It allows administrators to manage product inventory, track orders, and view business analytics. The CMS is built to work seamlessly with the main Organica Staples customer-facing application, sharing the same Supabase backend.
+Amritya Organics CMS is a premium management dashboard for an ethically sourced, organic pantry staple store. It allows administrators to manage premium product inventory, track orders with provenance details, and monitor business analytics. The CMS is built to reflect the brand's "quiet luxury" aesthetic while integrating with the Amritya Organics customer platforms.
 
 ## Tech Stack
 - **Frontend Framework:** React 19 (with Vite)

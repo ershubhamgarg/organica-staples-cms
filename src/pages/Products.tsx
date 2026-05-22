@@ -121,9 +121,9 @@ export default function Products() {
         }}
       >
         <div>
-          <h1 className="page-title">Products</h1>
+          <h1 className="page-title">Pantry Essentials</h1>
           <p className="page-subtitle">
-            Manage your organic product inventory.
+            Curating premium organic staples with care.
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => handleOpenModal()}>

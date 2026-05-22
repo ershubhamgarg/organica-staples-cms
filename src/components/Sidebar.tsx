@@ -49,8 +49,15 @@ export default function Sidebar() {
         >
           <Leaf size={24} />
         </div>
-        <h2 style={{ fontSize: "1.25rem", letterSpacing: "-0.5px" }}>
-          Organica CMS
+        <h2
+          style={{
+            fontSize: "1.1rem",
+            fontWeight: 700,
+            letterSpacing: "-0.3px",
+            color: "var(--text-primary)",
+          }}
+        >
+          Amritya Organics <span style={{ color: "var(--accent-primary)" }}>CMS</span>
         </h2>
       </div>
 

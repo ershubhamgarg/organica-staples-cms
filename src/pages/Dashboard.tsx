@@ -55,8 +55,8 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Dashboard</h1>
-      <p className="page-subtitle">Welcome back! Here's an overview of your store from real-time data.</p>
+      <h1 className="page-title">Pantry Overview</h1>
+      <p className="page-subtitle">Monitoring Amritya's ethically sourced essentials.</p>
 
       {error && (
         <div style={{ padding: '1rem', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', borderRadius: '8px', marginBottom: '1rem' }}>
@@ -109,7 +109,15 @@ export default function Dashboard() {
                     <td style={{ padding: '16px' }}>{order.customer}</td>
                     <td style={{ padding: '16px', fontWeight: 500 }}>{order.total}</td>
                     <td style={{ padding: '16px' }}>
-                      <span className={`badge badge-${order.status.toLowerCase() === 'delivered' ? 'success' : order.status.toLowerCase() === 'pending' ? 'warning' : 'info'}`}>
+                      <span className={`badge badge-${
+                        order.status.toLowerCase() === 'delivered' || order.status.toLowerCase() === 'approved' 
+                          ? 'success' 
+                          : order.status.toLowerCase() === 'pending' || order.status.toLowerCase() === 'processing'
+                          ? 'warning' 
+                          : order.status.toLowerCase() === 'rejected' || order.status.toLowerCase() === 'cancelled'
+                          ? 'danger'
+                          : 'info'
+                      }`}>
                         {order.status}
                       </span>
                     </td>
