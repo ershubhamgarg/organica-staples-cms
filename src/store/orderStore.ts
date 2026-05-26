@@ -1,23 +1,97 @@
 import { create } from "zustand";
 import { supabase } from "../utils/supabase";
 
+export interface Address {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  zipCode: string;
+  state?: string;
+  country?: string;
+}
+
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+  cost_price?: number;
+  [key: string]: any;
+}
+
+export type PaymentDetails = {
+  provider: "razorpay";
+  provider_order_id: string;
+  provider_payment_id: string;
+  provider_signature: string;
+  amount: number;
+  currency: string;
+  status: "verified";
+  verified_at: string;
+  method?: string;
+  payment_phase?: "deposit" | "balance" | "full";
+  remaining_balance?: number;
+};
+
+export type OrderPricingDetails = {
+  subtotalAmount: number;
+  productDiscountAmount: number;
+  discountCode: string | null;
+  discountPercent: number;
+  couponDiscountAmount: number;
+  shippingAmount: number;
+  extraShippingAmount?: number;
+  convenienceFeeAmount: number;
+  codAmount?: number;
+};
+
 export interface Order {
   id: string;
   user_id: string | null;
-  items: any[];
-  delivery_address: {
-    name: string;
-    email: string;
-    phone: string;
-    address: string;
-    city: string;
-    zipCode: string;
-  };
+  items: CartItem[];
+  delivery_address: Address;
   payment_method: string;
+  payment_details?: PaymentDetails | null;
+  subtotal_amount?: number | null;
+  discount_code?: string | null;
+  discount_percent?: number | null;
+  product_discount_amount?: number | null;
+  coupon_discount_amount?: number | null;
+  discount_amount?: number | null;
+  shipping_amount?: number | null;
+  extra_shipping_amount?: number | null;
+  convenience_fee_amount?: number | null;
+  cod_amount?: number | null;
+  wholesale_total_amount?: number | null;
+  cost_to_company?: number | null;
+  profit_loss?: number | null;
   total_amount: number;
-  status: string;
-  rejection_reason?: string | null;
+  status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+  shiprocket_order_id?: string | null;
+  shiprocket_shipment_id?: string | null;
+  shiprocket_awb_code?: string | null;
+  shiprocket_courier_name?: string | null;
+  shiprocket_tracking_url?: string | null;
+  shipping_status?:
+    | "pending"
+    | "not_configured"
+    | "sync_failed"
+    | "created"
+    | "awb_assigned"
+    | "in_transit"
+    | "out_for_delivery"
+    | "delivered"
+    | "cancelled"
+    | string
+    | null;
+  shipping_error?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
   created_at: string;
+  rejection_reason?: string | null;
 }
 
 interface OrderState {

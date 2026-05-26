@@ -28,6 +28,7 @@ export default function Products() {
     name: "",
     description: "",
     price: 0,
+    cost_price: 0,
     image: "",
     images: [],
     category: "",
@@ -48,6 +49,7 @@ export default function Products() {
         name: product.name,
         description: product.description,
         price: product.price,
+        cost_price: product.cost_price || 0,
         image: product.image,
         images: Array.isArray(product.images)
           ? product.images
@@ -66,6 +68,7 @@ export default function Products() {
         name: "",
         description: "",
         price: 0,
+        cost_price: 0,
         image: "",
         images: [],
         category: "",
@@ -379,7 +382,7 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Price (₹)</label>
+                  <label>Selling Price (₹)</label>
                   <input
                     type="number"
                     required
@@ -388,6 +391,20 @@ export default function Products() {
                       setFormData({
                         ...formData,
                         price: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Cost Price (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.cost_price}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        cost_price: Number(e.target.value),
                       })
                     }
                   />

@@ -107,6 +107,9 @@ export default function Orders() {
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>
                     Status
                   </th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>
+                    Profit/Loss
+                  </th>
                   <th
                     style={{
                       padding: "12px 16px",
@@ -164,6 +167,29 @@ export default function Orders() {
                           {order.status}
                         </span>
                       </td>
+                      <td style={{ padding: "16px" }}>
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            color:
+                              (order.profit_loss || 0) > 0
+                                ? "var(--success)"
+                                : (order.profit_loss || 0) < 0
+                                  ? "var(--danger)"
+                                  : "var(--text-secondary)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {(order.profit_loss || 0) > 0
+                            ? "+"
+                            : (order.profit_loss || 0) < 0
+                              ? "-"
+                              : ""}
+                          ₹{Math.abs(order.profit_loss || 0).toLocaleString()}
+                        </span>
+                      </td>
                       <td style={{ padding: "16px", textAlign: "right" }}>
                         <button
                           className="btn-ghost"
@@ -182,7 +208,7 @@ export default function Orders() {
                 ) : (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       style={{
                         padding: "2rem",
                         textAlign: "center",
