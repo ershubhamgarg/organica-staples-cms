@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, ShoppingCart, Loader2, Search } from "lucide-react";
+import { Eye, Loader2 } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
 
 export default function Orders() {

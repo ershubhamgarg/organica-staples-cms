@@ -13,7 +13,7 @@ interface ProductState {
   uploadImage: (file: File) => Promise<string>;
 }
 
-export const useProductStore = create<ProductState>()((set, get) => ({
+export const useProductStore = create<ProductState>()((set) => ({
   products: [],
   isLoading: false,
   error: null,
@@ -91,13 +91,13 @@ export const useProductStore = create<ProductState>()((set, get) => ({
 
   uploadImage: async (file: File) => {
     set({ isLoading: true, error: null });
-    
-    const fileExt = file.name.split('.').pop();
+
+    const fileExt = file.name.split(".").pop();
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `images/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from('products')
+      .from("products")
       .upload(filePath, file);
 
     if (uploadError) {
@@ -105,9 +105,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
       throw new Error(uploadError.message);
     }
 
-    const { data } = supabase.storage
-      .from('products')
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from("products").getPublicUrl(filePath);
 
     set({ isLoading: false });
     return data.publicUrl;

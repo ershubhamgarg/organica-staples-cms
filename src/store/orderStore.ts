@@ -107,7 +107,7 @@ interface OrderState {
   getOrderById: (id: string) => Promise<Order | null>;
 }
 
-export const useOrderStore = create<OrderState>()((set, get) => ({
+export const useOrderStore = create<OrderState>()((set) => ({
   orders: [],
   isLoading: false,
   error: null,

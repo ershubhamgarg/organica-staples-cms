@@ -480,7 +480,7 @@ export default function Products() {
                   >
                     <input
                       type="checkbox"
-                      checked={formData.available}
+                      checked={formData.available as boolean}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
