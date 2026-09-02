@@ -11,6 +11,9 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Orders from "./pages/Orders";
 import OrderDetails from "./pages/OrderDetails";
+import Coupons from "./pages/Coupons";
+import LaunchInterests from "./pages/LaunchInterests";
+import Customers from "./pages/Customers";
 import Login from "./pages/Login";
 import { useAuthStore } from "./store/authStore";
 import { Loader2 } from "lucide-react";
@@ -66,6 +69,9 @@ function App() {
             <Route path="products" element={<Products />} />
             <Route path="orders" element={<Orders />} />
             <Route path="orders/:id" element={<OrderDetails />} />
+            <Route path="coupons" element={<Coupons />} />
+            <Route path="launch-interests" element={<LaunchInterests />} />
+            <Route path="customers" element={<Customers />} />
           </Route>
         </Route>
 

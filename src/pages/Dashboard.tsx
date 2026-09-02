@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Users, ShoppingBag, DollarSign, Package, Loader2 } from "lucide-react";
+import { Users, ShoppingBag, IndianRupee, Package, Loader2 } from "lucide-react";
 import { useStatsStore } from "../store/statsStore";
 
 export default function Dashboard() {
@@ -22,7 +22,7 @@ export default function Dashboard() {
     {
       label: "Total Revenue",
       value: `₹${totalRevenue.toLocaleString()}`,
-      icon: DollarSign,
+      icon: IndianRupee,
       color: "var(--accent-primary)",
     },
     {

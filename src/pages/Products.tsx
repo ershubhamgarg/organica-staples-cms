@@ -11,6 +11,37 @@ import { useProductStore } from "../store/productStore";
 import { type Product } from "../types/product";
 import { ImageUpload } from "../components/ImageUpload";
 
+function getStockStatus(product: Product): { label: string; variant: string } {
+  const qty = product.available_quantity;
+
+  if (qty == null) {
+    return product.available !== false
+      ? { label: "Available", variant: "success" }
+      : { label: "Unavailable", variant: "danger" };
+  }
+
+  if (qty <= 0) {
+    return { label: "Out of Stock", variant: "danger" };
+  }
+
+  if (
+    product.low_stock_threshold != null &&
+    qty <= product.low_stock_threshold
+  ) {
+    return { label: "Low Stock", variant: "warning" };
+  }
+
+  return { label: "In Stock", variant: "success" };
+}
+
+function toDatetimeLocalValue(iso?: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function Products() {
   const {
     products,
@@ -21,14 +52,15 @@ export default function Products() {
     updateProduct,
     deleteProduct,
     uploadImage,
+    updateInventory,
   } = useProductStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState<Omit<Product, "id" | "created_at">>({
+  const blankFormData: Omit<Product, "id" | "created_at"> = {
     name: "",
     description: "",
     price: 0,
-    cost_price: 0,
+    wholesale_price: 0,
     image: "",
     images: [],
     category: "",
@@ -36,7 +68,16 @@ export default function Products() {
     weight: "",
     benefits: [],
     available: true,
-  });
+    isVisible: true,
+    available_quantity: 0,
+    low_stock_threshold: 5,
+    hsn_code: "",
+    launch_status: "available",
+    launch_date: "",
+    launch_badge_text: "",
+  };
+  const [formData, setFormData] =
+    useState<Omit<Product, "id" | "created_at">>(blankFormData);
 
   useEffect(() => {
     fetchProducts();
@@ -49,7 +90,7 @@ export default function Products() {
         name: product.name,
         description: product.description,
         price: product.price,
-        cost_price: product.cost_price || 0,
+        wholesale_price: product.wholesale_price || 0,
         image: product.image,
         images: Array.isArray(product.images)
           ? product.images
@@ -61,22 +102,17 @@ export default function Products() {
         weight: product.weight,
         benefits: product.benefits || [],
         available: product.available ?? true,
+        isVisible: product.isVisible ?? true,
+        available_quantity: product.available_quantity ?? 0,
+        low_stock_threshold: product.low_stock_threshold ?? 5,
+        hsn_code: product.hsn_code || "",
+        launch_status: product.launch_status || "available",
+        launch_date: toDatetimeLocalValue(product.launch_date),
+        launch_badge_text: product.launch_badge_text || "",
       });
     } else {
       setEditingProduct(null);
-      setFormData({
-        name: "",
-        description: "",
-        price: 0,
-        cost_price: 0,
-        image: "",
-        images: [],
-        category: "",
-        origin: "",
-        weight: "",
-        benefits: [],
-        available: true,
-      });
+      setFormData(blankFormData);
     }
     setIsModalOpen(true);
   };
@@ -92,10 +128,27 @@ export default function Products() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const {
+        available_quantity,
+        low_stock_threshold,
+        launch_date,
+        ...productFields
+      } = formData;
+      const inventoryUpdates = {
+        available_quantity: available_quantity ?? 0,
+        low_stock_threshold: low_stock_threshold ?? 5,
+      };
+      const productPayload = {
+        ...productFields,
+        launch_date: launch_date ? new Date(launch_date).toISOString() : null,
+      };
+
       if (editingProduct) {
-        await updateProduct(editingProduct.id, formData);
+        await updateProduct(editingProduct.id, productPayload);
+        await updateInventory(editingProduct.id, inventoryUpdates);
       } else {
-        await addProduct(formData);
+        const created = await addProduct(productPayload);
+        await updateInventory(created.id, inventoryUpdates);
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -265,13 +318,27 @@ export default function Products() {
                     </td>
                     <td style={{ padding: "16px" }}>{product.weight}</td>
                     <td style={{ padding: "16px" }}>
-                      <span
-                        className={`badge badge-${product.available !== false ? "success" : "danger"}`}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "6px",
+                          flexWrap: "wrap",
+                        }}
                       >
-                        {product.available !== false
-                          ? "Available"
-                          : "Unavailable"}
-                      </span>
+                        {(() => {
+                          const stock = getStockStatus(product);
+                          return (
+                            <span className={`badge badge-${stock.variant}`}>
+                              {stock.label}
+                            </span>
+                          );
+                        })()}
+                        {product.isVisible === false && (
+                          <span className="badge badge-secondary">
+                            Hidden
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "16px", textAlign: "right" }}>
                       <div
@@ -396,16 +463,57 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Cost Price (₹)</label>
+                  <label>Wholesale Price / Cost (₹)</label>
                   <input
                     type="number"
                     required
-                    value={formData.cost_price}
+                    value={formData.wholesale_price}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        cost_price: Number(e.target.value),
+                        wholesale_price: Number(e.target.value),
                       })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Available Quantity</label>
+                  <input
+                    type="number"
+                    min={0}
+                    required
+                    value={formData.available_quantity ?? 0}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        available_quantity: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Low Stock Threshold</label>
+                  <input
+                    type="number"
+                    min={0}
+                    required
+                    value={formData.low_stock_threshold ?? 5}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        low_stock_threshold: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>HSN Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 09103020"
+                    value={formData.hsn_code ?? ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, hsn_code: e.target.value })
                     }
                   />
                 </div>
@@ -443,6 +551,54 @@ export default function Products() {
                     }
                   />
                 </div>
+                <div className="form-group">
+                  <label>Launch Status</label>
+                  <select
+                    value={formData.launch_status ?? "available"}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        launch_status: e.target
+                          .value as Product["launch_status"],
+                      })
+                    }
+                  >
+                    <option value="available">Available</option>
+                    <option value="just_launched">Just Launched</option>
+                    <option value="launching_soon">Launching Soon</option>
+                  </select>
+                </div>
+                {formData.launch_status !== "available" && (
+                  <>
+                    <div className="form-group">
+                      <label>Launch Date</label>
+                      <input
+                        type="datetime-local"
+                        value={formData.launch_date ?? ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            launch_date: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: "span 2" }}>
+                      <label>Launch Badge Text</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. LIMITED DROP, COMING FRIDAY"
+                        value={formData.launch_badge_text ?? ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            launch_badge_text: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="form-group" style={{ gridColumn: "span 2" }}>
                   <label>Benefits (comma separated)</label>
                   <input
@@ -490,6 +646,29 @@ export default function Products() {
                       style={{ width: "auto" }}
                     />
                     Available for purchase
+                  </label>
+                </div>
+                <div className="form-group" style={{ gridColumn: "span 2" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.isVisible as boolean}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          isVisible: e.target.checked,
+                        })
+                      }
+                      style={{ width: "auto" }}
+                    />
+                    Visible on store
                   </label>
                 </div>
               </div>

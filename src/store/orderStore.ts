@@ -18,7 +18,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   image: string;
-  cost_price?: number;
+  wholesale_price?: number;
   [key: string]: any;
 }
 
@@ -92,6 +92,14 @@ export interface Order {
   delivered_at?: string | null;
   created_at: string;
   rejection_reason?: string | null;
+  customer_name?: string | null;
+  invoice_number?: string | null;
+  invoice_generated_at?: string | null;
+  razorpay_refund_id?: string | null;
+  refund_status?: "pending" | "processed" | "failed" | string | null;
+  refund_amount?: number | null;
+  refunded_at?: string | null;
+  refund_checked_at?: string | null;
 }
 
 interface OrderState {

@@ -37,7 +37,9 @@ export const useStatsStore = create<DashboardStats>()((set) => ({
       if (productError) throw productError;
       if (ordersError) throw ordersError;
 
-      const totalRevenue = ordersData?.reduce((acc, order) => acc + (order.total_amount || 0), 0) || 0;
+      const totalRevenue = ordersData
+        ?.filter((order) => order.status !== "cancelled")
+        .reduce((acc, order) => acc + (order.total_amount || 0), 0) || 0;
       const totalOrders = ordersData?.length || 0;
 
       // 3. Estimate customers from unique delivery addresses or user_ids

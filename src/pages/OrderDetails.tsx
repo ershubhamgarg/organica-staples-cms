@@ -120,6 +120,20 @@ export default function OrderDetails() {
     }
   };
 
+  const getRefundBadgeColor = (status: string | null | undefined) => {
+    if (!status) return "secondary";
+    switch (status.toLowerCase()) {
+      case "processed":
+        return "success";
+      case "pending":
+        return "warning";
+      case "failed":
+        return "danger";
+      default:
+        return "secondary";
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       <button
@@ -749,6 +763,153 @@ export default function OrderDetails() {
                   </div>
                 )}
               </div>
+
+              <div
+                style={{
+                  padding: "1rem",
+                  background: "var(--bg-primary)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "var(--text-secondary)",
+                    marginBottom: "4px",
+                  }}
+                >
+                  GST Invoice
+                </div>
+                {order.invoice_number ? (
+                  <>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontFamily: "monospace",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {order.invoice_number}
+                    </div>
+                    {order.invoice_generated_at && (
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--text-secondary)",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Generated{" "}
+                        {new Date(
+                          order.invoice_generated_at,
+                        ).toLocaleString()}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div
+                    style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}
+                  >
+                    Not yet generated
+                  </div>
+                )}
+              </div>
+
+              {order.refund_status && (
+                <div
+                  style={{
+                    padding: "1rem",
+                    background: "var(--bg-primary)",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom:
+                        order.refund_amount != null ||
+                        order.razorpay_refund_id ||
+                        order.refunded_at
+                          ? "12px"
+                          : 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
+                      Refund Status
+                    </div>
+                    <span
+                      className={`badge badge-${getRefundBadgeColor(order.refund_status)}`}
+                    >
+                      {order.refund_status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    {order.refund_amount != null && (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
+                          Refund Amount
+                        </div>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                          ₹{order.refund_amount.toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+                    {order.razorpay_refund_id && (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
+                          Razorpay Refund ID
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.85rem",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {order.razorpay_refund_id}
+                        </div>
+                      </div>
+                    )}
+                    {order.refunded_at && (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
+                          Refunded At
+                        </div>
+                        <div style={{ fontSize: "0.85rem" }}>
+                          {new Date(order.refunded_at).toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

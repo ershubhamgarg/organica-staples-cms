@@ -7,6 +7,8 @@ import {
   Settings,
   Leaf,
   LogOut,
+  Percent,
+  Bell,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 
@@ -17,6 +19,8 @@ export default function Sidebar() {
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Package, label: "Products", path: "/products" },
     { icon: ShoppingCart, label: "Orders", path: "/orders" },
+    { icon: Percent, label: "Coupons", path: "/coupons" },
+    { icon: Bell, label: "Launch Interests", path: "/launch-interests" },
     { icon: Users, label: "Customers", path: "/customers" },
     { icon: Settings, label: "Settings", path: "/settings" },
   ];
