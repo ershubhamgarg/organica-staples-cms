@@ -1,7 +1,12 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, PackageSearch } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
+import PageHeader from "../components/ui/PageHeader";
+import ErrorBanner from "../components/ui/ErrorBanner";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import Card from "../components/ui/Card";
 
 export default function Orders() {
   const { orders, isLoading, error, fetchOrders } = useOrderStore();
@@ -14,19 +19,16 @@ export default function Orders() {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case "delivered":
-        return "success";
       case "approved":
         return "success";
       case "pending":
+      case "processing":
         return "warning";
       case "shipped":
         return "info";
       case "cancelled":
-        return "danger";
       case "rejected":
         return "danger";
-      case "processing":
-        return "warning";
       default:
         return "secondary";
     }
@@ -34,56 +36,19 @@ export default function Orders() {
 
   return (
     <div className="animate-fade-in">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "2rem",
-        }}
-      >
-        <div>
-          <h1 className="page-title">Orders</h1>
-          <p className="page-subtitle">
-            Manage customer orders and track fulfillment.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Orders"
+        subtitle="Manage customer orders and track fulfillment."
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      <div className="glass-card" style={{ padding: "1.5rem" }}>
+      <Card>
         <div style={{ overflowX: "auto" }}>
           {isLoading && orders.length === 0 ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "2rem",
-              }}
-            >
-              <Loader2 className="animate-spin" />
-            </div>
+            <Spinner />
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
-              }}
-            >
+            <table style={{ width: "100%", textAlign: "left" }}>
               <thead>
                 <tr
                   style={{
@@ -126,10 +91,7 @@ export default function Orders() {
                   orders.map((order) => (
                     <tr
                       key={order.id}
-                      style={{
-                        borderBottom: "1px solid var(--border-color)",
-                        transition: "background 0.2s",
-                      }}
+                      style={{ borderBottom: "1px solid var(--border-color)" }}
                     >
                       <td style={{ padding: "16px", fontWeight: 600 }}>
                         #ORD-{order.id.slice(0, 8).toUpperCase()}
@@ -177,9 +139,6 @@ export default function Orders() {
                                 : (order.profit_loss || 0) < 0
                                   ? "var(--danger)"
                                   : "var(--text-secondary)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
                           }}
                         >
                           {(order.profit_loss || 0) > 0
@@ -207,15 +166,8 @@ export default function Orders() {
                   ))
                 ) : (
                   <tr>
-                    <td
-                      colSpan={7}
-                      style={{
-                        padding: "2rem",
-                        textAlign: "center",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      No orders found.
+                    <td colSpan={7}>
+                      <EmptyState icon={PackageSearch} message="No orders found." />
                     </td>
                   </tr>
                 )}
@@ -223,7 +175,7 @@ export default function Orders() {
             </table>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -1,6 +1,12 @@
 import { useEffect } from "react";
-import { Users, ShoppingBag, IndianRupee, Package, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Users, ShoppingBag, IndianRupee, Package } from "lucide-react";
 import { useStatsStore } from "../store/statsStore";
+import PageHeader from "../components/ui/PageHeader";
+import ErrorBanner from "../components/ui/ErrorBanner";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import Card from "../components/ui/Card";
 
 export default function Dashboard() {
   const {
@@ -13,6 +19,7 @@ export default function Dashboard() {
     error,
     fetchStats,
   } = useStatsStore();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStats();
@@ -23,67 +30,40 @@ export default function Dashboard() {
       label: "Total Revenue",
       value: `₹${totalRevenue.toLocaleString()}`,
       icon: IndianRupee,
-      color: "var(--accent-primary)",
+      color: "var(--color-brand-green)",
     },
     {
       label: "Total Orders",
       value: totalOrders.toString(),
       icon: ShoppingBag,
-      color: "#3b82f6",
+      color: "var(--color-brand-gold)",
     },
     {
       label: "Total Products",
       value: totalProducts.toString(),
       icon: Package,
-      color: "#f59e0b",
+      color: "var(--color-brand-terracotta)",
     },
     {
       label: "Total Customers",
       value: totalCustomers.toString(),
       icon: Users,
-      color: "#8b5cf6",
+      color: "#6B6353",
     },
   ];
 
   if (isLoading && totalOrders === 0) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100%",
-        }}
-      >
-        <Loader2
-          className="animate-spin"
-          size={48}
-          color="var(--accent-primary)"
-        />
-      </div>
-    );
+    return <Spinner size={48} padding="4rem" />;
   }
 
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Pantry Overview</h1>
-      <p className="page-subtitle">
-        Monitoring Amritya's ethically sourced essentials.
-      </p>
+      <PageHeader
+        title="Pantry Overview"
+        subtitle="Monitoring ANNVRIKSH's ethically sourced essentials."
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
       <div
         style={{
@@ -94,7 +74,7 @@ export default function Dashboard() {
         }}
       >
         {stats.map((stat, idx) => (
-          <div key={idx} className="glass-card" style={{ padding: "1.5rem" }}>
+          <Card key={idx}>
             <div
               style={{
                 display: "flex",
@@ -113,13 +93,18 @@ export default function Dashboard() {
                 >
                   {stat.label}
                 </p>
-                <h3 style={{ fontSize: "1.8rem", fontWeight: 700 }}>
+                <h3
+                  style={{
+                    fontSize: "1.8rem",
+                    fontFamily: "'Fraunces', Georgia, serif",
+                  }}
+                >
                   {stat.value}
                 </h3>
               </div>
               <div
                 style={{
-                  background: `${stat.color}20`,
+                  background: `${stat.color}1a`,
                   padding: "10px",
                   borderRadius: "12px",
                   color: stat.color,
@@ -143,11 +128,11 @@ export default function Dashboard() {
                 from Database
               </span>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
-      <div className="glass-card" style={{ padding: "1.5rem" }}>
+      <Card>
         <div
           style={{
             display: "flex",
@@ -157,17 +142,16 @@ export default function Dashboard() {
           }}
         >
           <h3 style={{ fontSize: "1.2rem" }}>Recent Orders</h3>
-          <button className="btn btn-ghost">View All</button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => navigate("/orders")}
+          >
+            View All
+          </button>
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              textAlign: "left",
-            }}
-          >
+          <table style={{ width: "100%", textAlign: "left" }}>
             <thead>
               <tr
                 style={{
@@ -194,10 +178,7 @@ export default function Dashboard() {
                 recentOrders.map((order, idx) => (
                   <tr
                     key={idx}
-                    style={{
-                      borderBottom: "1px solid var(--border-color)",
-                      transition: "background 0.2s",
-                    }}
+                    style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
                     <td style={{ padding: "16px", fontWeight: 600 }}>
                       {order.id}
@@ -236,22 +217,15 @@ export default function Dashboard() {
                 ))
               ) : (
                 <tr>
-                  <td
-                    colSpan={5}
-                    style={{
-                      padding: "2rem",
-                      textAlign: "center",
-                      color: "var(--text-secondary)",
-                    }}
-                  >
-                    No recent orders found.
+                  <td colSpan={5}>
+                    <EmptyState message="No recent orders found." />
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

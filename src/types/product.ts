@@ -13,7 +13,6 @@ export interface Product {
   discount?: number | null;
   rating?: number;
   review_count?: number;
-  available?: boolean | null;
   isVisible?: boolean | null;
   available_quantity?: number | null;
   reserved_quantity?: number | null;

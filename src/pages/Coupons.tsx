@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { Plus, Edit2, Trash2, X, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Loader2, TicketPercent } from "lucide-react";
 import { useCouponStore, type Coupon } from "../store/couponStore";
+import PageHeader from "../components/ui/PageHeader";
+import ErrorBanner from "../components/ui/ErrorBanner";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import Card from "../components/ui/Card";
 
 const blankCoupon: Coupon = {
   code: "",
@@ -87,52 +92,27 @@ export default function Coupons() {
 
   return (
     <div className="animate-fade-in">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "2rem",
-        }}
-      >
-        <div>
-          <h1 className="page-title">Coupons</h1>
-          <p className="page-subtitle">
-            Manage discount codes offered at checkout.
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} />
-          Add Coupon
-        </button>
-      </div>
+      <PageHeader
+        title="Coupons"
+        subtitle="Manage discount codes offered at checkout."
+        action={
+          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
+            <Plus size={18} />
+            Add Coupon
+          </button>
+        }
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      <div className="glass-card" style={{ padding: "1.5rem" }}>
+      <Card>
         <div style={{ overflowX: "auto" }}>
           {isLoading && coupons.length === 0 ? (
-            <div
-              style={{ display: "flex", justifyContent: "center", padding: "2rem" }}
-            >
-              <Loader2 className="animate-spin" />
-            </div>
+            <Spinner />
+          ) : coupons.length === 0 ? (
+            <EmptyState icon={TicketPercent} message="No coupons yet." />
           ) : (
-            <table
-              style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}
-            >
+            <table style={{ width: "100%", textAlign: "left" }}>
               <thead>
                 <tr
                   style={{
@@ -163,13 +143,11 @@ export default function Coupons() {
                 </tr>
               </thead>
               <tbody>
-                {coupons.length > 0 ? (
-                  coupons.map((coupon) => (
+                {coupons.map((coupon) => (
                     <tr
                       key={coupon.code}
                       style={{
                         borderBottom: "1px solid var(--border-color)",
-                        transition: "background 0.2s",
                       }}
                     >
                       <td
@@ -238,45 +216,17 @@ export default function Coupons() {
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      style={{
-                        padding: "2rem",
-                        textAlign: "center",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      No coupons yet.
-                    </td>
-                  </tr>
-                )}
+                ))}
               </tbody>
             </table>
           )}
         </div>
-      </div>
+      </Card>
 
       {isModalOpen && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
+        <div className="modal-overlay">
           <div
-            className="glass-card"
+            className="card"
             style={{
               width: "90%",
               maxWidth: "500px",

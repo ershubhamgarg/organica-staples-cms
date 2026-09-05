@@ -16,6 +16,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
+import Spinner from "../components/ui/Spinner";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -232,17 +233,7 @@ export default function OrderDetails() {
   };
 
   if (!order) {
-    return (
-      <div
-        style={{ display: "flex", justifyContent: "center", padding: "4rem" }}
-      >
-        <Loader2
-          className="animate-spin"
-          size={48}
-          color="var(--accent-primary)"
-        />
-      </div>
-    );
+    return <Spinner size={48} padding="4rem" />;
   }
 
   const getShippingBadgeColor = (status: string | null | undefined) => {
@@ -388,7 +379,7 @@ export default function OrderDetails() {
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {/* Order Items */}
-          <div className="glass-card" style={{ padding: "1.5rem" }}>
+          <div className="card" style={{ padding: "1.5rem" }}>
             <div
               style={{
                 display: "flex",
@@ -603,7 +594,7 @@ export default function OrderDetails() {
           </div>
 
           {/* Profit Analysis */}
-          <div className="glass-card" style={{ padding: "1.5rem" }}>
+          <div className="card" style={{ padding: "1.5rem" }}>
             <div
               style={{
                 display: "flex",
@@ -734,7 +725,7 @@ export default function OrderDetails() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {/* Customer Details */}
-          <div className="glass-card" style={{ padding: "1.5rem" }}>
+          <div className="card" style={{ padding: "1.5rem" }}>
             <div
               style={{
                 display: "flex",
@@ -796,7 +787,7 @@ export default function OrderDetails() {
           </div>
 
           {/* Payment Info */}
-          <div className="glass-card" style={{ padding: "1.5rem" }}>
+          <div className="card" style={{ padding: "1.5rem" }}>
             <div
               style={{
                 display: "flex",
@@ -1062,7 +1053,7 @@ export default function OrderDetails() {
           </div>
 
           {/* Shipping Logistics */}
-          <div className="glass-card" style={{ padding: "1.5rem" }}>
+          <div className="card" style={{ padding: "1.5rem" }}>
             <div
               style={{
                 display: "flex",
@@ -1201,23 +1192,9 @@ export default function OrderDetails() {
       {/* Rejection Modal */}
       {showRejectionModal && (
         <div
-          className="modal-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-          }}
-        >
+          className="modal-overlay">
           <div
-            className="glass-card"
+            className="card"
             style={{
               width: "90%",
               maxWidth: "400px",
@@ -1305,23 +1282,9 @@ export default function OrderDetails() {
       {/* Cancel Order Modal */}
       {showCancelModal && order && (
         <div
-          className="modal-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-          }}
-        >
+          className="modal-overlay">
           <div
-            className="glass-card"
+            className="card"
             style={{
               width: "90%",
               maxWidth: "440px",
@@ -1460,23 +1423,9 @@ export default function OrderDetails() {
       {/* Update Shipping Details Modal */}
       {showShippingModal && (
         <div
-          className="modal-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-          }}
-        >
+          className="modal-overlay">
           <div
-            className="glass-card"
+            className="card"
             style={{
               width: "90%",
               maxWidth: "440px",

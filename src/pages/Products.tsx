@@ -6,19 +6,19 @@ import {
   Image as ImageIcon,
   X,
   Loader2,
+  Sprout,
 } from "lucide-react";
 import { useProductStore } from "../store/productStore";
 import { type Product } from "../types/product";
 import { ImageUpload } from "../components/ImageUpload";
+import PageHeader from "../components/ui/PageHeader";
+import ErrorBanner from "../components/ui/ErrorBanner";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import Card from "../components/ui/Card";
 
 function getStockStatus(product: Product): { label: string; variant: string } {
-  const qty = product.available_quantity;
-
-  if (qty == null) {
-    return product.available !== false
-      ? { label: "Available", variant: "success" }
-      : { label: "Unavailable", variant: "danger" };
-  }
+  const qty = product.available_quantity ?? 0;
 
   if (qty <= 0) {
     return { label: "Out of Stock", variant: "danger" };
@@ -67,7 +67,6 @@ export default function Products() {
     origin: "",
     weight: "",
     benefits: [],
-    available: true,
     isVisible: true,
     available_quantity: 0,
     low_stock_threshold: 5,
@@ -101,7 +100,6 @@ export default function Products() {
         origin: product.origin,
         weight: product.weight,
         benefits: product.benefits || [],
-        available: product.available ?? true,
         isVisible: product.isVisible ?? true,
         available_quantity: product.available_quantity ?? 0,
         low_stock_threshold: product.low_stock_threshold ?? 5,
@@ -168,60 +166,30 @@ export default function Products() {
 
   return (
     <div className="animate-fade-in">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "2rem",
-        }}
-      >
-        <div>
-          <h1 className="page-title">Pantry Essentials</h1>
-          <p className="page-subtitle">
-            Curating premium organic staples with care.
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} />
-          Add Product
-        </button>
-      </div>
+      <PageHeader
+        title="Pantry Essentials"
+        subtitle="Curating premium organic staples with care."
+        action={
+          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
+            <Plus size={18} />
+            Add Product
+          </button>
+        }
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      <div className="glass-card" style={{ padding: "1.5rem" }}>
+      <Card>
         <div style={{ overflowX: "auto" }}>
           {isLoading && products.length === 0 ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "2rem",
-              }}
-            >
-              <Loader2 className="animate-spin" />
-            </div>
+            <Spinner />
+          ) : products.length === 0 ? (
+            <EmptyState
+              icon={Sprout}
+              message="No products yet — add your first pantry essential."
+            />
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
-              }}
-            >
+            <table style={{ width: "100%", textAlign: "left" }}>
               <thead>
                 <tr
                   style={{
@@ -269,10 +237,7 @@ export default function Products() {
                 {products.map((product) => (
                   <tr
                     key={product.id}
-                    style={{
-                      borderBottom: "1px solid var(--border-color)",
-                      transition: "background 0.2s",
-                    }}
+                    style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
                     <td style={{ padding: "16px" }}>
                       <div
@@ -378,26 +343,12 @@ export default function Products() {
             </table>
           )}
         </div>
-      </div>
+      </Card>
 
       {isModalOpen && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
+        <div className="modal-overlay">
           <div
-            className="glass-card"
+            className="card"
             style={{
               width: "90%",
               maxWidth: "600px",
@@ -624,29 +575,6 @@ export default function Products() {
                     onChange={handleImagesChange}
                     onUpload={uploadImage}
                   />
-                </div>
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.available as boolean}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          available: e.target.checked,
-                        })
-                      }
-                      style={{ width: "auto" }}
-                    />
-                    Available for purchase
-                  </label>
                 </div>
                 <div className="form-group" style={{ gridColumn: "span 2" }}>
                   <label

@@ -1,6 +1,11 @@
 import { useEffect } from "react";
-import { Loader2, Mail, MailCheck } from "lucide-react";
+import { Mail, MailCheck, BellRing } from "lucide-react";
 import { useLaunchInterestStore } from "../store/launchInterestStore";
+import PageHeader from "../components/ui/PageHeader";
+import ErrorBanner from "../components/ui/ErrorBanner";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import Card from "../components/ui/Card";
 
 export default function LaunchInterests() {
   const { interests, isLoading, error, fetchInterests, updateEmailSent } =
@@ -20,39 +25,21 @@ export default function LaunchInterests() {
 
   return (
     <div className="animate-fade-in">
-      <div style={{ marginBottom: "2rem" }}>
-        <h1 className="page-title">Launch Interest Leads</h1>
-        <p className="page-subtitle">
-          Customers waiting on "Launching Soon" products.
-        </p>
-      </div>
+      <PageHeader
+        title="Launch Interest Leads"
+        subtitle='Customers waiting on "Launching Soon" products.'
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      <div className="glass-card" style={{ padding: "1.5rem" }}>
+      <Card>
         <div style={{ overflowX: "auto" }}>
           {isLoading && interests.length === 0 ? (
-            <div
-              style={{ display: "flex", justifyContent: "center", padding: "2rem" }}
-            >
-              <Loader2 className="animate-spin" />
-            </div>
+            <Spinner />
+          ) : interests.length === 0 ? (
+            <EmptyState icon={BellRing} message="No launch-interest leads yet." />
           ) : (
-            <table
-              style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}
-            >
+            <table style={{ width: "100%", textAlign: "left" }}>
               <thead>
                 <tr
                   style={{
@@ -79,13 +66,11 @@ export default function LaunchInterests() {
                 </tr>
               </thead>
               <tbody>
-                {interests.length > 0 ? (
-                  interests.map((interest) => (
+                {interests.map((interest) => (
                     <tr
                       key={interest.id}
                       style={{
                         borderBottom: "1px solid var(--border-color)",
-                        transition: "background 0.2s",
                       }}
                     >
                       <td style={{ padding: "16px", fontWeight: 600 }}>
@@ -128,26 +113,12 @@ export default function LaunchInterests() {
                         </button>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      style={{
-                        padding: "2rem",
-                        textAlign: "center",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      No launch-interest leads yet.
-                    </td>
-                  </tr>
-                )}
+                ))}
               </tbody>
             </table>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

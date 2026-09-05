@@ -1,53 +1,69 @@
-import { Bell, Search } from 'lucide-react';
+import { Search } from "lucide-react";
+import { useAuthStore } from "../store/authStore";
 
 export default function Header() {
+  const user = useAuthStore((state) => state.user);
+
   return (
-    <header style={{
-      height: '70px',
-      borderBottom: '1px solid var(--border-color)',
-      background: 'var(--bg-primary)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '0 2rem',
-      position: 'sticky',
-      top: 0,
-      zIndex: 10
-    }}>
-      <div style={{ position: 'relative', width: '300px' }}>
-        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-        <input 
-          type="text" 
-          placeholder="Search products, orders..." 
+    <header
+      style={{
+        height: "70px",
+        borderBottom: "1px solid var(--border-color)",
+        background: "var(--bg-primary)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 2rem",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}
+    >
+      <div style={{ position: "relative", width: "300px" }}>
+        <Search
+          size={18}
+          style={{
+            position: "absolute",
+            left: "12px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "var(--text-secondary)",
+          }}
+        />
+        <input
+          type="text"
+          placeholder="Search products, orders..."
           className="input-field"
-          style={{ paddingLeft: '38px', borderRadius: 'var(--radius-full)', background: 'var(--bg-secondary)', border: 'none' }}
+          style={{
+            paddingLeft: "38px",
+            borderRadius: "var(--radius-full)",
+            background: "var(--bg-secondary)",
+          }}
         />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-        <button className="btn-ghost" style={{ position: 'relative', padding: '8px', borderRadius: '50%' }}>
-          <Bell size={20} />
-          <span style={{ 
-            position: 'absolute', 
-            top: '4px', 
-            right: '4px', 
-            width: '8px', 
-            height: '8px', 
-            background: 'var(--danger)', 
-            borderRadius: '50%',
-            border: '2px solid var(--bg-primary)'
-          }}></span>
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Pantry Admin</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>admin@amritya.com</div>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div
+          style={{
+            width: "38px",
+            height: "38px",
+            borderRadius: "50%",
+            background: "var(--color-brand-gold-light)",
+            color: "var(--color-brand-green)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: "0.95rem",
+          }}
+        >
+          {(user?.email?.[0] || "A").toUpperCase()}
+        </div>
+        <div>
+          <div style={{ fontSize: "0.88rem", fontWeight: 600 }}>Admin</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+            {user?.email}
           </div>
-          <img 
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
-            alt="Profile" 
-            style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-tertiary)' }}
-          />
         </div>
       </div>
     </header>

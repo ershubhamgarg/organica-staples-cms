@@ -27,6 +27,7 @@ const ProtectedRoute = () => {
       <div
         style={{
           minHeight: "100vh",
+          width: "100%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -58,7 +59,7 @@ function App() {
 
   return (
     <Router>
-      <Toaster position="top-right" richColors theme="dark" />
+      <Toaster position="top-right" richColors theme="light" />
       <Routes>
         <Route path="/login" element={<Login />} />
 

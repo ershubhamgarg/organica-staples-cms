@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
-import { Leaf, Loader2, Lock, Mail } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react";
+import logoMark from "../assets/annvriksh-mark.png";
+import ErrorBanner from "../components/ui/ErrorBanner";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -20,129 +22,131 @@ export default function Login() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--bg-primary)",
-        padding: "1rem",
-      }}
-    >
+    <div style={{ minHeight: "100vh", width: "100%", display: "flex" }}>
       <div
-        className="glass-card"
-        style={{ width: "100%", maxWidth: "400px", padding: "2.5rem" }}
+        style={{
+          flex: "1 1 420px",
+          maxWidth: "480px",
+          background: "var(--color-brand-green)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "3rem",
+          textAlign: "center",
+          gap: "1.5rem",
+        }}
       >
-        <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-          <div
-            style={{
-              background: "var(--accent-light)",
-              width: "60px",
-              height: "60px",
-              borderRadius: "var(--radius-lg)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 1rem",
-              color: "var(--accent-primary)",
-            }}
-          >
-            <Leaf size={32} />
-          </div>
+        <img
+          src={logoMark}
+          alt="ANNVRIKSH"
+          style={{ width: "88px", height: "88px", objectFit: "contain" }}
+        />
+        <div>
           <h1
             style={{
-              fontSize: "1.75rem",
-              fontWeight: 700,
-              marginBottom: "0.5rem",
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontSize: "2.2rem",
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              color: "var(--color-brand-cream)",
             }}
           >
-            Amritya Organics
+            ANNVRIKSH
           </h1>
-          <p style={{ color: "var(--text-secondary)" }}>
-            Premium Organic Pantry CMS
-          </p>
-        </div>
-
-        {error && (
           <div
             style={{
-              padding: "1rem",
-              backgroundColor: "rgba(239, 68, 68, 0.1)",
-              color: "var(--danger)",
-              borderRadius: "var(--radius-md)",
-              marginBottom: "1.5rem",
-              fontSize: "0.9rem",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              letterSpacing: "0.2em",
+              color: "var(--color-brand-gold-light)",
+              marginTop: "0.35rem",
             }}
           >
-            {error}
+            CMS
           </div>
-        )}
-
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}
+        </div>
+        <p
+          style={{
+            color: "rgba(253, 251, 247, 0.65)",
+            fontSize: "0.95rem",
+            maxWidth: "280px",
+          }}
         >
-          <div className="form-group">
-            <label
-              style={{ display: "flex", alignItems: "center", gap: "8px" }}
-            >
-              <Mail size={16} /> Email Address
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@amritya.com"
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "8px",
-                border: "1px solid var(--border-color)",
-                background: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-              }}
-            />
-          </div>
+          Pure by nature. Essential by choice.
+        </p>
+      </div>
 
-          <div className="form-group">
-            <label
-              style={{ display: "flex", alignItems: "center", gap: "8px" }}
-            >
-              <Lock size={16} /> Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "8px",
-                border: "1px solid var(--border-color)",
-                background: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-              }}
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isLoading}
-            style={{ marginTop: "0.5rem", height: "45px" }}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--bg-primary)",
+          padding: "1.5rem",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: "380px" }}>
+          <h2
+            style={{
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontSize: "1.5rem",
+              marginBottom: "0.4rem",
+            }}
           >
-            {isLoading ? (
-              <Loader2 className="animate-spin" size={20} />
-            ) : (
-              "Sign In to Dashboard"
-            )}
-          </button>
-        </form>
+            Welcome back
+          </h2>
+          <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
+            Sign in to manage your store.
+          </p>
+
+          {error && <ErrorBanner message={error} />}
+
+          <form
+            onSubmit={handleSubmit}
+            style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}
+          >
+            <div className="form-group">
+              <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Mail size={16} /> Email Address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@annvriksh.com"
+              />
+            </div>
+
+            <div className="form-group">
+              <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Lock size={16} /> Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isLoading}
+              style={{ marginTop: "0.5rem", height: "46px" }}
+            >
+              {isLoading ? (
+                <Loader2 className="animate-spin" size={20} />
+              ) : (
+                "Sign In"
+              )}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
