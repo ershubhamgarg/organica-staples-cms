@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Package,
@@ -11,18 +12,40 @@ import {
   X,
   Truck,
   ExternalLink,
+  Ban,
+  RefreshCcw,
 } from "lucide-react";
-import { useOrderStore, type Order } from "../store/orderStore";
+import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
+
+const canRefundOrder = (order: Order) =>
+  order.payment_method === "razorpay" &&
+  Boolean(order.payment_details?.provider_payment_id);
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const getOrderById = useOrderStore((state) => state.getOrderById);
   const updateOrderStatus = useOrderStore((state) => state.updateOrderStatus);
+  const cancelOrderWithRefund = useOrderStore(
+    (state) => state.cancelOrderWithRefund,
+  );
+  const syncShippingDetails = useOrderStore(
+    (state) => state.syncShippingDetails,
+  );
   const [order, setOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [refundMode, setRefundMode] = useState<RefundMode>("full");
+  const [refundAmount, setRefundAmount] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [shipOrderId, setShipOrderId] = useState("");
+  const [shipShipmentId, setShipShipmentId] = useState("");
+  const [shipAwbCode, setShipAwbCode] = useState("");
+  const [isSyncingShipping, setIsSyncingShipping] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -49,10 +72,22 @@ export default function OrderDetails() {
         : "rgba(148, 163, 184, 0.1)";
 
   const handleStatusUpdate = async (newStatus: string) => {
-    if (!id) return;
+    if (!id || !order) return;
 
     if (newStatus === "rejected") {
       setShowRejectionModal(true);
+      return;
+    }
+
+    if (newStatus === "cancelled") {
+      if (order.status === "cancelled" || order.status === "delivered") {
+        toast.error(`Cannot cancel an order that is already ${order.status}.`);
+        return;
+      }
+      setCancelReason("");
+      setRefundMode(canRefundOrder(order) ? "full" : "none");
+      setRefundAmount(order.total_amount);
+      setShowCancelModal(true);
       return;
     }
 
@@ -84,6 +119,115 @@ export default function OrderDetails() {
       alert("Failed to reject order");
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!id || !cancelReason.trim()) return;
+
+    if (
+      refundMode === "partial" &&
+      (!(refundAmount > 0) || refundAmount > (order?.total_amount ?? 0))
+    ) {
+      toast.error("Refund amount must be greater than 0 and no more than the order total.");
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      const result = await cancelOrderWithRefund(id, {
+        reason: cancelReason,
+        refund: {
+          mode: refundMode,
+          amount: refundMode === "partial" ? refundAmount : undefined,
+        },
+      });
+
+      setOrder(result.order);
+      setShowCancelModal(false);
+      setCancelReason("");
+
+      if (result.shipment.attempted && !result.shipment.success) {
+        toast.error("Shipment cancellation failed", {
+          description: result.shipment.message ?? undefined,
+        });
+      } else if (result.shipment.success) {
+        toast.success("Shipment cancelled.");
+      }
+
+      if (result.refund.attempted && !result.refund.success) {
+        toast.error("Refund failed", {
+          description: result.refund.message ?? undefined,
+        });
+      } else if (result.refund.success) {
+        toast.success(
+          `Refund of ₹${result.refund.amount?.toLocaleString()} ${result.refund.status}.`,
+        );
+      }
+
+      if (!result.shipment.attempted && !result.refund.attempted) {
+        toast.success("Order cancelled.");
+      }
+    } catch (err) {
+      console.error("Failed to cancel order:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to cancel order.",
+      );
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleOpenShippingModal = () => {
+    setShipOrderId(order?.shiprocket_order_id ?? "");
+    setShipShipmentId(order?.shiprocket_shipment_id ?? "");
+    setShipAwbCode(order?.shiprocket_awb_code ?? "");
+    setShowShippingModal(true);
+  };
+
+  const handleConfirmSyncShipping = async () => {
+    if (!id) return;
+
+    const shiprocketOrderId = shipOrderId.trim() || undefined;
+    const shiprocketShipmentId = shipShipmentId.trim() || undefined;
+    const awbCode = shipAwbCode.trim() || undefined;
+
+    if (!shiprocketOrderId && !shiprocketShipmentId && !awbCode) {
+      toast.error("Enter at least one of Order ID, Shipment ID, or AWB Code.");
+      return;
+    }
+
+    try {
+      setIsSyncingShipping(true);
+      const result = await syncShippingDetails(id, {
+        shiprocketOrderId,
+        shiprocketShipmentId,
+        awbCode,
+      });
+
+      setOrder(result.order);
+      setShowShippingModal(false);
+
+      if (result.tracking.attempted && !result.tracking.success) {
+        toast.error("Saved the IDs, but tracking lookup failed", {
+          description: result.tracking.message ?? undefined,
+        });
+      } else if (result.tracking.success) {
+        toast.success(
+          result.tracking.courierName
+            ? `Tracking updated — ${result.tracking.courierName}, status: ${result.tracking.status}.`
+            : "Tracking updated.",
+        );
+      } else {
+        toast.success("Shipping details saved.");
+      }
+    } catch (err) {
+      console.error("Failed to update shipping details:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update shipping details.",
+      );
+    } finally {
+      setIsSyncingShipping(false);
     }
   };
 
@@ -196,7 +340,7 @@ export default function OrderDetails() {
             <select
               value={order.status}
               onChange={(e) => handleStatusUpdate(e.target.value)}
-              disabled={isUpdating}
+              disabled={isUpdating || isCancelling}
               className="input-field"
               style={{
                 width: "auto",
@@ -214,7 +358,7 @@ export default function OrderDetails() {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
-          {order.rejection_reason && (
+          {(order.rejection_reason || order.cancellation_reason) && (
             <div
               style={{
                 display: "flex",
@@ -229,7 +373,11 @@ export default function OrderDetails() {
               }}
             >
               <AlertCircle size={14} />
-              <span>Reason: {order.rejection_reason}</span>
+              <span>
+                {order.cancellation_reason
+                  ? `Cancellation reason: ${order.cancellation_reason}`
+                  : `Reason: ${order.rejection_reason}`}
+              </span>
             </div>
           )}
         </div>
@@ -919,12 +1067,30 @@ export default function OrderDetails() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "10px",
+                justifyContent: "space-between",
                 marginBottom: "1.5rem",
               }}
             >
-              <Truck size={20} color="var(--accent-primary)" />
-              <h3 style={{ fontSize: "1.1rem" }}>Shipping & Logistics</h3>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
+                <Truck size={20} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: "1.1rem" }}>Shipping & Logistics</h3>
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={handleOpenShippingModal}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "0.8rem",
+                  color: "var(--accent-primary)",
+                }}
+              >
+                <RefreshCcw size={14} />
+                Update
+              </button>
             </div>
             <div
               style={{
@@ -1129,6 +1295,306 @@ export default function OrderDetails() {
                   <Loader2 className="animate-spin" size={18} />
                 ) : (
                   "Confirm Rejection"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Modal */}
+      {showCancelModal && order && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.8)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1100,
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: "90%",
+              maxWidth: "440px",
+              padding: "2rem",
+              position: "relative",
+            }}
+          >
+            <button
+              className="btn-ghost"
+              onClick={() => setShowCancelModal(false)}
+              disabled={isCancelling}
+              style={{ position: "absolute", top: "1rem", right: "1rem" }}
+            >
+              <X size={20} />
+            </button>
+            <h2
+              style={{
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <Ban color="var(--danger)" />
+              Cancel Order
+            </h2>
+            <p
+              style={{
+                color: "var(--text-secondary)",
+                marginBottom: "1.5rem",
+                fontSize: "0.9rem",
+              }}
+            >
+              {order.shiprocket_order_id
+                ? "This will cancel the Shiprocket shipment for this order."
+                : "This order has no shipment to cancel yet."}
+            </p>
+
+            <div className="form-group">
+              <label>Cancellation Reason</label>
+              <textarea
+                autoFocus
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="e.g. Customer requested cancellation"
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+
+            {canRefundOrder(order) && (
+              <div className="form-group" style={{ marginTop: "1rem" }}>
+                <label>Refund</label>
+                <select
+                  value={refundMode}
+                  onChange={(e) =>
+                    setRefundMode(e.target.value as RefundMode)
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-primary)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="full">
+                    Full refund (₹{order.total_amount.toLocaleString()})
+                  </option>
+                  <option value="partial">Partial refund</option>
+                  <option value="none">No refund</option>
+                </select>
+
+                {refundMode === "partial" && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={order.total_amount}
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(Number(e.target.value))}
+                    placeholder="Refund amount (₹)"
+                    style={{
+                      width: "100%",
+                      marginTop: "0.75rem",
+                      padding: "0.75rem",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                      background: "var(--bg-primary)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "flex-end",
+                marginTop: "1.5rem",
+              }}
+            >
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowCancelModal(false)}
+                disabled={isCancelling}
+              >
+                Back
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ backgroundColor: "var(--danger)" }}
+                disabled={!cancelReason.trim() || isCancelling}
+                onClick={handleConfirmCancel}
+              >
+                {isCancelling ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  "Confirm Cancellation"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Shipping Details Modal */}
+      {showShippingModal && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.8)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1100,
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: "90%",
+              maxWidth: "440px",
+              padding: "2rem",
+              position: "relative",
+            }}
+          >
+            <button
+              className="btn-ghost"
+              onClick={() => setShowShippingModal(false)}
+              disabled={isSyncingShipping}
+              style={{ position: "absolute", top: "1rem", right: "1rem" }}
+            >
+              <X size={20} />
+            </button>
+            <h2
+              style={{
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <RefreshCcw color="var(--accent-primary)" />
+              Update Shipping Details
+            </h2>
+            <p
+              style={{
+                color: "var(--text-secondary)",
+                marginBottom: "1.5rem",
+                fontSize: "0.9rem",
+              }}
+            >
+              Use this when automatic Shiprocket sync failed. Enter whichever
+              identifier you have — if you provide the AWB Code, courier name,
+              status, and tracking link are fetched automatically.
+            </p>
+
+            <div className="form-group">
+              <label>Shiprocket Order ID</label>
+              <input
+                type="text"
+                value={shipOrderId}
+                onChange={(e) => setShipOrderId(e.target.value)}
+                placeholder="e.g. 123456789"
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+            <div className="form-group" style={{ marginTop: "1rem" }}>
+              <label>Shipment ID</label>
+              <input
+                type="text"
+                value={shipShipmentId}
+                onChange={(e) => setShipShipmentId(e.target.value)}
+                placeholder="e.g. 987654321"
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+            <div className="form-group" style={{ marginTop: "1rem" }}>
+              <label>AWB Code</label>
+              <input
+                type="text"
+                autoFocus
+                value={shipAwbCode}
+                onChange={(e) => setShipAwbCode(e.target.value)}
+                placeholder="e.g. 141234567890"
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "flex-end",
+                marginTop: "1.5rem",
+              }}
+            >
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowShippingModal(false)}
+                disabled={isSyncingShipping}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={
+                  isSyncingShipping ||
+                  (!shipOrderId.trim() && !shipShipmentId.trim() && !shipAwbCode.trim())
+                }
+                onClick={handleConfirmSyncShipping}
+              >
+                {isSyncingShipping ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  "Save & Sync"
                 )}
               </button>
             </div>

@@ -92,6 +92,7 @@ export interface Order {
   delivered_at?: string | null;
   created_at: string;
   rejection_reason?: string | null;
+  cancellation_reason?: string | null;
   customer_name?: string | null;
   invoice_number?: string | null;
   invoice_generated_at?: string | null;
@@ -101,6 +102,35 @@ export interface Order {
   refunded_at?: string | null;
   refund_checked_at?: string | null;
 }
+
+export type RefundMode = "full" | "partial" | "none";
+
+export type CancelOrderStepResult = {
+  attempted: boolean;
+  success: boolean;
+  message: string | null;
+};
+
+export type CancelOrderResult = {
+  order: Order;
+  shipment: CancelOrderStepResult;
+  refund: CancelOrderStepResult & {
+    status: string | null;
+    amount: number | null;
+  };
+};
+
+export type SyncShippingResult = {
+  order: Order;
+  tracking: {
+    attempted: boolean;
+    success: boolean;
+    message: string | null;
+    courierName: string | null;
+    status: string | null;
+    trackingUrl: string | null;
+  };
+};
 
 interface OrderState {
   orders: Order[];
@@ -113,6 +143,45 @@ interface OrderState {
     rejectionReason?: string,
   ) => Promise<void>;
   getOrderById: (id: string) => Promise<Order | null>;
+  cancelOrderWithRefund: (
+    id: string,
+    input: { reason: string; refund: { mode: RefundMode; amount?: number } },
+  ) => Promise<CancelOrderResult>;
+  syncShippingDetails: (
+    id: string,
+    input: {
+      shiprocketOrderId?: string;
+      shiprocketShipmentId?: string;
+      awbCode?: string;
+    },
+  ) => Promise<SyncShippingResult>;
+}
+
+async function postToOrdersApi<T>(path: string, body: unknown): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    throw new Error("You must be signed in to do this.");
+  }
+
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Request failed.");
+  }
+
+  return result as T;
 }
 
 export const useOrderStore = create<OrderState>()((set) => ({
@@ -172,5 +241,50 @@ export const useOrderStore = create<OrderState>()((set) => ({
     }
 
     return data;
+  },
+
+  cancelOrderWithRefund: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<CancelOrderResult>(
+        "/api/orders/cancel",
+        { orderId: id, ...input },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel order.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  syncShippingDetails: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<SyncShippingResult>(
+        "/api/orders/sync-shipping",
+        { orderId: id, ...input },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update shipping details.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
   },
 }));

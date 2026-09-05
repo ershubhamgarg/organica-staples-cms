@@ -67,11 +67,23 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 6. **Coupons:** Create, edit, and deactivate `discount_coupons` used at storefront checkout.
 7. **Launch Interest Leads:** View "Launching Soon" waitlist signups and track follow-up emails.
 8. **Customers:** Aggregated customer list (name, email, phone, order count, total spent) derived from order history.
+9. **Cancel Order + Refund:** Cancel an order, auto-cancel its Shiprocket shipment, and issue a full or partial Razorpay refund, all in one action with a required reason — see `api/orders/cancel.ts`.
+10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link — see `api/orders/sync-shipping.ts`.
 
 ## Environment Setup
-Required variables in `.env`:
+Required variables in `.env` (client-side, Vite-exposed):
 - `VITE_SUPABASE_URL`: Your Supabase project URL.
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous/public key.
+
+### Server-only variables (Vercel project settings, never in `.env`/client code)
+Required for `api/orders/cancel.ts` and `api/orders/sync-shipping.ts` (Vercel Edge Functions
+under `api/`). Add these in the CMS's own Vercel project — copy the values from the
+storefront's Vercel project, where they already exist:
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`: for issuing refunds.
+- `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`: for cancelling/tracking shipments.
+- `VITE_SUPABASE_SERVICE_ROLE_KEY`: already present in this project's Vercel env (pulled
+  earlier) — the Edge Functions read it server-side only; it must never be referenced from
+  `src/` since Vite would then bundle it into client-side JS.
 
 ## Security & RLS
 This CMS uses the **Anon Key** and **Supabase Auth**. To allow admins to read orders and manage products, ensure the following SQL policies are applied in your Supabase Dashboard:
@@ -124,6 +136,15 @@ WITH CHECK (true);
 
 This block is idempotent (safe to re-run) — it drops each policy before recreating it, so it
 won't error if some of these were already applied previously.
+
+### New column for Cancel Order + Refund
+
+`api/orders/cancel.ts` writes a cancellation reason to its own column, kept separate from the
+existing `rejection_reason` (used by the pre-fulfillment "Reject Order" flow) so the two cases
+stay distinguishable in the data:
+```sql
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS cancellation_reason text;
+```
 
 ### Diagnosing an empty Products page
 
