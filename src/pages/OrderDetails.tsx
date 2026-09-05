@@ -6,10 +6,8 @@ import {
   Package,
   CreditCard,
   MapPin,
-  Loader2,
   XCircle,
   AlertCircle,
-  X,
   Truck,
   ExternalLink,
   Ban,
@@ -17,6 +15,8 @@ import {
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
 import Spinner from "../components/ui/Spinner";
+import Modal from "../components/ui/Modal";
+import Button from "../components/ui/Button";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -1068,20 +1068,15 @@ export default function OrderDetails() {
                 <Truck size={20} color="var(--accent-primary)" />
                 <h3 style={{ fontSize: "1.1rem" }}>Shipping & Logistics</h3>
               </div>
-              <button
-                className="btn-ghost"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<RefreshCcw size={14} />}
                 onClick={handleOpenShippingModal}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "0.8rem",
-                  color: "var(--accent-primary)",
-                }}
+                style={{ color: "var(--accent-primary)" }}
               >
-                <RefreshCcw size={14} />
                 Update
-              </button>
+              </Button>
             </div>
             <div
               style={{
@@ -1191,364 +1186,224 @@ export default function OrderDetails() {
 
       {/* Rejection Modal */}
       {showRejectionModal && (
-        <div
-          className="modal-overlay">
-          <div
-            className="card"
+        <Modal
+          onClose={() => setShowRejectionModal(false)}
+          title="Reject Order"
+          icon={<XCircle size={20} />}
+          maxWidth="400px"
+          closeDisabled={isUpdating}
+        >
+          <p
             style={{
-              width: "90%",
-              maxWidth: "400px",
-              padding: "2rem",
-              position: "relative",
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
             }}
           >
-            <button
-              className="btn-ghost"
-              onClick={() => setShowRejectionModal(false)}
-              style={{ position: "absolute", top: "1rem", right: "1rem" }}
-            >
-              <X size={20} />
-            </button>
-            <h2
-              style={{
-                marginBottom: "1rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <XCircle color="var(--danger)" />
-              Reject Order
-            </h2>
-            <p
-              style={{
-                color: "var(--text-secondary)",
-                marginBottom: "1.5rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              Please provide a reason for rejecting this order. This will be
-              visible to the customer.
-            </p>
-            <div className="form-group">
-              <label>Rejection Reason</label>
-              <textarea
-                autoFocus
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="e.g. Out of stock, Delivery area not covered"
-                style={{
-                  width: "100%",
-                  minHeight: "100px",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-primary)",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: "1rem",
-                justifyContent: "flex-end",
-                marginTop: "1.5rem",
-              }}
-            >
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowRejectionModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ backgroundColor: "var(--danger)" }}
-                disabled={!rejectionReason.trim() || isUpdating}
-                onClick={handleConfirmRejection}
-              >
-                {isUpdating ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  "Confirm Rejection"
-                )}
-              </button>
-            </div>
+            Please provide a reason for rejecting this order. This will be
+            visible to the customer.
+          </p>
+          <div className="form-group">
+            <label>Rejection Reason</label>
+            <textarea
+              autoFocus
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="e.g. Out of stock, Delivery area not covered"
+              style={{ minHeight: "100px" }}
+            />
           </div>
-        </div>
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => setShowRejectionModal(false)}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!rejectionReason.trim()}
+              loading={isUpdating}
+              onClick={handleConfirmRejection}
+            >
+              Confirm Rejection
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {/* Cancel Order Modal */}
       {showCancelModal && order && (
-        <div
-          className="modal-overlay">
-          <div
-            className="card"
+        <Modal
+          onClose={() => setShowCancelModal(false)}
+          title="Cancel Order"
+          icon={<Ban size={20} />}
+          maxWidth="440px"
+          closeDisabled={isCancelling}
+        >
+          <p
             style={{
-              width: "90%",
-              maxWidth: "440px",
-              padding: "2rem",
-              position: "relative",
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
             }}
           >
-            <button
-              className="btn-ghost"
+            {order.shiprocket_order_id
+              ? "This will cancel the Shiprocket shipment for this order."
+              : "This order has no shipment to cancel yet."}
+          </p>
+
+          <div className="form-group">
+            <label>Cancellation Reason</label>
+            <textarea
+              autoFocus
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Customer requested cancellation"
+              style={{ minHeight: "80px" }}
+            />
+          </div>
+
+          {canRefundOrder(order) && (
+            <div className="form-group" style={{ marginTop: "1rem" }}>
+              <label>Refund</label>
+              <select
+                value={refundMode}
+                onChange={(e) => setRefundMode(e.target.value as RefundMode)}
+              >
+                <option value="full">
+                  Full refund (₹{order.total_amount.toLocaleString()})
+                </option>
+                <option value="partial">Partial refund</option>
+                <option value="none">No refund</option>
+              </select>
+
+              {refundMode === "partial" && (
+                <input
+                  type="number"
+                  min={1}
+                  max={order.total_amount}
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(Number(e.target.value))}
+                  placeholder="Refund amount (₹)"
+                  style={{ marginTop: "0.75rem" }}
+                />
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
               onClick={() => setShowCancelModal(false)}
               disabled={isCancelling}
-              style={{ position: "absolute", top: "1rem", right: "1rem" }}
             >
-              <X size={20} />
-            </button>
-            <h2
-              style={{
-                marginBottom: "1rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
+              Back
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!cancelReason.trim()}
+              loading={isCancelling}
+              onClick={handleConfirmCancel}
             >
-              <Ban color="var(--danger)" />
-              Cancel Order
-            </h2>
-            <p
-              style={{
-                color: "var(--text-secondary)",
-                marginBottom: "1.5rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              {order.shiprocket_order_id
-                ? "This will cancel the Shiprocket shipment for this order."
-                : "This order has no shipment to cancel yet."}
-            </p>
-
-            <div className="form-group">
-              <label>Cancellation Reason</label>
-              <textarea
-                autoFocus
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="e.g. Customer requested cancellation"
-                style={{
-                  width: "100%",
-                  minHeight: "80px",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-primary)",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-
-            {canRefundOrder(order) && (
-              <div className="form-group" style={{ marginTop: "1rem" }}>
-                <label>Refund</label>
-                <select
-                  value={refundMode}
-                  onChange={(e) =>
-                    setRefundMode(e.target.value as RefundMode)
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border-color)",
-                    background: "var(--bg-primary)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <option value="full">
-                    Full refund (₹{order.total_amount.toLocaleString()})
-                  </option>
-                  <option value="partial">Partial refund</option>
-                  <option value="none">No refund</option>
-                </select>
-
-                {refundMode === "partial" && (
-                  <input
-                    type="number"
-                    min={1}
-                    max={order.total_amount}
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(Number(e.target.value))}
-                    placeholder="Refund amount (₹)"
-                    style={{
-                      width: "100%",
-                      marginTop: "0.75rem",
-                      padding: "0.75rem",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border-color)",
-                      background: "var(--bg-primary)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                )}
-              </div>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                gap: "1rem",
-                justifyContent: "flex-end",
-                marginTop: "1.5rem",
-              }}
-            >
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowCancelModal(false)}
-                disabled={isCancelling}
-              >
-                Back
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ backgroundColor: "var(--danger)" }}
-                disabled={!cancelReason.trim() || isCancelling}
-                onClick={handleConfirmCancel}
-              >
-                {isCancelling ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  "Confirm Cancellation"
-                )}
-              </button>
-            </div>
+              Confirm Cancellation
+            </Button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Update Shipping Details Modal */}
       {showShippingModal && (
-        <div
-          className="modal-overlay">
-          <div
-            className="card"
+        <Modal
+          onClose={() => setShowShippingModal(false)}
+          title="Update Shipping Details"
+          icon={<RefreshCcw size={20} />}
+          iconColor="var(--accent-primary)"
+          maxWidth="440px"
+          closeDisabled={isSyncingShipping}
+        >
+          <p
             style={{
-              width: "90%",
-              maxWidth: "440px",
-              padding: "2rem",
-              position: "relative",
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
             }}
           >
-            <button
-              className="btn-ghost"
+            Use this when automatic Shiprocket sync failed. Enter whichever
+            identifier you have — if you provide the AWB Code, courier name,
+            status, and tracking link are fetched automatically.
+          </p>
+
+          <div className="form-group">
+            <label>Shiprocket Order ID</label>
+            <input
+              type="text"
+              value={shipOrderId}
+              onChange={(e) => setShipOrderId(e.target.value)}
+              placeholder="e.g. 123456789"
+            />
+          </div>
+          <div className="form-group" style={{ marginTop: "1rem" }}>
+            <label>Shipment ID</label>
+            <input
+              type="text"
+              value={shipShipmentId}
+              onChange={(e) => setShipShipmentId(e.target.value)}
+              placeholder="e.g. 987654321"
+            />
+          </div>
+          <div className="form-group" style={{ marginTop: "1rem" }}>
+            <label>AWB Code</label>
+            <input
+              type="text"
+              autoFocus
+              value={shipAwbCode}
+              onChange={(e) => setShipAwbCode(e.target.value)}
+              placeholder="e.g. 141234567890"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
               onClick={() => setShowShippingModal(false)}
               disabled={isSyncingShipping}
-              style={{ position: "absolute", top: "1rem", right: "1rem" }}
             >
-              <X size={20} />
-            </button>
-            <h2
-              style={{
-                marginBottom: "1rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !shipOrderId.trim() && !shipShipmentId.trim() && !shipAwbCode.trim()
+              }
+              loading={isSyncingShipping}
+              onClick={handleConfirmSyncShipping}
             >
-              <RefreshCcw color="var(--accent-primary)" />
-              Update Shipping Details
-            </h2>
-            <p
-              style={{
-                color: "var(--text-secondary)",
-                marginBottom: "1.5rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              Use this when automatic Shiprocket sync failed. Enter whichever
-              identifier you have — if you provide the AWB Code, courier name,
-              status, and tracking link are fetched automatically.
-            </p>
-
-            <div className="form-group">
-              <label>Shiprocket Order ID</label>
-              <input
-                type="text"
-                value={shipOrderId}
-                onChange={(e) => setShipOrderId(e.target.value)}
-                placeholder="e.g. 123456789"
-                style={{
-                  width: "100%",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-primary)",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-            <div className="form-group" style={{ marginTop: "1rem" }}>
-              <label>Shipment ID</label>
-              <input
-                type="text"
-                value={shipShipmentId}
-                onChange={(e) => setShipShipmentId(e.target.value)}
-                placeholder="e.g. 987654321"
-                style={{
-                  width: "100%",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-primary)",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-            <div className="form-group" style={{ marginTop: "1rem" }}>
-              <label>AWB Code</label>
-              <input
-                type="text"
-                autoFocus
-                value={shipAwbCode}
-                onChange={(e) => setShipAwbCode(e.target.value)}
-                placeholder="e.g. 141234567890"
-                style={{
-                  width: "100%",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-primary)",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "1rem",
-                justifyContent: "flex-end",
-                marginTop: "1.5rem",
-              }}
-            >
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowShippingModal(false)}
-                disabled={isSyncingShipping}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={
-                  isSyncingShipping ||
-                  (!shipOrderId.trim() && !shipShipmentId.trim() && !shipAwbCode.trim())
-                }
-                onClick={handleConfirmSyncShipping}
-              >
-                {isSyncingShipping ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  "Save & Sync"
-                )}
-              </button>
-            </div>
+              Save & Sync
+            </Button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

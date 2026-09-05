@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { Plus, Edit2, Trash2, X, Loader2, TicketPercent } from "lucide-react";
+import { Plus, Edit2, Trash2, TicketPercent } from "lucide-react";
+import { toast } from "sonner";
 import { useCouponStore, type Coupon } from "../store/couponStore";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import Modal from "../components/ui/Modal";
+import Button from "../components/ui/Button";
+import IconButton from "../components/ui/IconButton";
 
 const blankCoupon: Coupon = {
   code: "",
@@ -37,6 +41,8 @@ export default function Coupons() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [formData, setFormData] = useState<Coupon>(blankCoupon);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCoupons();
@@ -59,6 +65,7 @@ export default function Coupons() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setIsSaving(true);
       const payload: Coupon = {
         ...formData,
         code: formData.code.trim().toUpperCase(),
@@ -71,22 +78,31 @@ export default function Coupons() {
         const { code: _code, ...updates } = payload;
         void _code;
         await updateCoupon(editingCode, updates);
+        toast.success("Coupon updated.");
       } else {
         await addCoupon(payload);
+        toast.success("Coupon added.");
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error("Failed to save coupon:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to save coupon.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (code: string) => {
-    if (window.confirm(`Delete coupon "${code}"?`)) {
-      try {
-        await deleteCoupon(code);
-      } catch (err) {
-        console.error("Failed to delete coupon:", err);
-      }
+    if (!window.confirm(`Delete coupon "${code}"?`)) return;
+    try {
+      setDeletingCode(code);
+      await deleteCoupon(code);
+      toast.success("Coupon deleted.");
+    } catch (err) {
+      console.error("Failed to delete coupon:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to delete coupon.");
+    } finally {
+      setDeletingCode(null);
     }
   };
 
@@ -96,10 +112,9 @@ export default function Coupons() {
         title="Coupons"
         subtitle="Manage discount codes offered at checkout."
         action={
-          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-            <Plus size={18} />
+          <Button icon={<Plus size={18} />} onClick={() => handleOpenModal()}>
             Add Coupon
-          </button>
+          </Button>
         }
       />
 
@@ -144,78 +159,72 @@ export default function Coupons() {
               </thead>
               <tbody>
                 {coupons.map((coupon) => (
-                    <tr
-                      key={coupon.code}
+                  <tr
+                    key={coupon.code}
+                    style={{ borderBottom: "1px solid var(--border-color)" }}
+                  >
+                    <td
                       style={{
-                        borderBottom: "1px solid var(--border-color)",
+                        padding: "16px",
+                        fontWeight: 600,
+                        fontFamily: "monospace",
                       }}
                     >
-                      <td
-                        style={{
-                          padding: "16px",
-                          fontWeight: 600,
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {coupon.code}
-                      </td>
-                      <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
-                        {coupon.label || "—"}
-                      </td>
-                      <td style={{ padding: "16px", fontWeight: 500 }}>
-                        {coupon.percent}%
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        {coupon.min_order_value != null
-                          ? `₹${coupon.min_order_value.toLocaleString()}`
-                          : "—"}
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        {coupon.valid_upto
-                          ? new Date(coupon.valid_upto).toLocaleDateString()
-                          : "No expiry"}
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                          <span
-                            className={`badge badge-${coupon.is_active ? "success" : "secondary"}`}
-                          >
-                            {coupon.is_active ? "Active" : "Inactive"}
-                          </span>
-                          {!coupon.is_public && (
-                            <span className="badge badge-warning">Private</span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: "16px", textAlign: "right" }}>
-                        <div
-                          style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}
+                      {coupon.code}
+                    </td>
+                    <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
+                      {coupon.label || "—"}
+                    </td>
+                    <td style={{ padding: "16px", fontWeight: 500 }}>
+                      {coupon.percent}%
+                    </td>
+                    <td style={{ padding: "16px" }}>
+                      {coupon.min_order_value != null
+                        ? `₹${coupon.min_order_value.toLocaleString()}`
+                        : "—"}
+                    </td>
+                    <td style={{ padding: "16px" }}>
+                      {coupon.valid_upto
+                        ? new Date(coupon.valid_upto).toLocaleDateString()
+                        : "No expiry"}
+                    </td>
+                    <td style={{ padding: "16px" }}>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <span
+                          className={`badge badge-${coupon.is_active ? "success" : "secondary"}`}
                         >
-                          <button
-                            className="btn-ghost"
-                            onClick={() => handleOpenModal(coupon)}
-                            style={{
-                              padding: "6px",
-                              borderRadius: "6px",
-                              color: "var(--text-secondary)",
-                            }}
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            className="btn-ghost"
-                            onClick={() => handleDelete(coupon.code)}
-                            style={{
-                              padding: "6px",
-                              borderRadius: "6px",
-                              color: "var(--danger)",
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                          {coupon.is_active ? "Active" : "Inactive"}
+                        </span>
+                        {!coupon.is_public && (
+                          <span className="badge badge-warning">Private</span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: "16px", textAlign: "right" }}>
+                      <div
+                        style={{ display: "flex", justifyContent: "flex-end", gap: "4px" }}
+                      >
+                        <IconButton
+                          icon={<Edit2 size={16} />}
+                          tooltip="Edit coupon"
+                          onClick={() => handleOpenModal(coupon)}
+                        />
+                        <IconButton
+                          icon={
+                            deletingCode === coupon.code ? (
+                              <Spinner size={16} padding="0" />
+                            ) : (
+                              <Trash2 size={16} />
+                            )
+                          }
+                          tooltip="Delete coupon"
+                          danger
+                          disabled={deletingCode === coupon.code}
+                          onClick={() => handleDelete(coupon.code)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -224,174 +233,154 @@ export default function Coupons() {
       </Card>
 
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div
-            className="card"
-            style={{
-              width: "90%",
-              maxWidth: "500px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              padding: "2rem",
-              position: "relative",
-            }}
-          >
-            <button
-              className="btn-ghost"
-              onClick={() => setIsModalOpen(false)}
-              style={{ position: "absolute", top: "1rem", right: "1rem" }}
+        <Modal
+          onClose={() => setIsModalOpen(false)}
+          title={editingCode ? "Edit Coupon" : "Add New Coupon"}
+          icon={<TicketPercent size={20} />}
+          iconColor="var(--accent-primary)"
+          maxWidth="500px"
+          closeDisabled={isSaving}
+        >
+          <form onSubmit={handleSubmit}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "1rem",
+                marginBottom: "1.5rem",
+              }}
             >
-              <X size={24} />
-            </button>
-            <h2 style={{ marginBottom: "1.5rem" }}>
-              {editingCode ? "Edit Coupon" : "Add New Coupon"}
-            </h2>
-            <form onSubmit={handleSubmit}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "1rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label>Code</label>
-                  <input
-                    type="text"
-                    required
-                    disabled={!!editingCode}
-                    value={formData.code}
-                    onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value })
-                    }
-                    style={{ textTransform: "uppercase" }}
-                  />
-                </div>
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label>Label</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Raksha Bandhan Special – 10% Off"
-                    value={formData.label ?? ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, label: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount %</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    max={100}
-                    value={formData.percent}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        percent: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Min Order Value (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.min_order_value ?? ""}
-                    placeholder="No minimum"
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        min_order_value: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                  />
-                </div>
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label>Valid Upto</label>
-                  <input
-                    type="date"
-                    value={formData.valid_upto ?? ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, valid_upto: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="form-group">
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.is_active}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          is_active: e.target.checked,
-                        })
-                      }
-                      style={{ width: "auto" }}
-                    />
-                    Active
-                  </label>
-                </div>
-                <div className="form-group">
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.is_public}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          is_public: e.target.checked,
-                        })
-                      }
-                      style={{ width: "auto" }}
-                    />
-                    Public (listed to customers)
-                  </label>
-                </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label>Code</label>
+                <input
+                  type="text"
+                  required
+                  disabled={!!editingCode}
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value })
+                  }
+                  style={{ textTransform: "uppercase" }}
+                />
               </div>
-              <div
-                style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label>Label</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Raksha Bandhan Special – 10% Off"
+                  value={formData.label ?? ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, label: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Discount %</label>
+                <input
+                  type="number"
+                  required
+                  min={0}
+                  max={100}
+                  value={formData.percent}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      percent: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Min Order Value (₹)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={formData.min_order_value ?? ""}
+                  placeholder="No minimum"
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      min_order_value: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label>Valid Upto</label>
+                <input
+                  type="date"
+                  value={formData.valid_upto ?? ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, valid_upto: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                  }}
                 >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={isLoading}>
-                  {isLoading ? (
-                    <Loader2 className="animate-spin" size={18} />
-                  ) : editingCode ? (
-                    "Update Coupon"
-                  ) : (
-                    "Add Coupon"
-                  )}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        is_active: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Active
+                </label>
               </div>
-            </form>
-          </div>
-        </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.is_public}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        is_public: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Public (listed to customers)
+                </label>
+              </div>
+            </div>
+            <div
+              style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsModalOpen(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={isSaving}>
+                {editingCode ? "Update Coupon" : "Add Coupon"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

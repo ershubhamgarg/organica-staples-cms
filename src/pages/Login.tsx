@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
-import { Loader2, Lock, Mail } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
 import logoMark from "../assets/annvriksh-mark.png";
 import ErrorBanner from "../components/ui/ErrorBanner";
+import Button from "../components/ui/Button";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -24,6 +25,7 @@ export default function Login() {
   return (
     <div style={{ minHeight: "100vh", width: "100%", display: "flex" }}>
       <div
+        className="login-branding-panel"
         style={{
           flex: "1 1 420px",
           maxWidth: "480px",
@@ -88,6 +90,17 @@ export default function Login() {
         }}
       >
         <div style={{ width: "100%", maxWidth: "380px" }}>
+          <img
+            src={logoMark}
+            alt="ANNVRIKSH"
+            className="login-mobile-mark"
+            style={{
+              width: "48px",
+              height: "48px",
+              objectFit: "contain",
+              marginBottom: "1rem",
+            }}
+          />
           <h2
             style={{
               fontFamily: "'Fraunces', Georgia, serif",
@@ -108,11 +121,16 @@ export default function Login() {
             style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}
           >
             <div className="form-group">
-              <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <label
+                htmlFor="login-email"
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
                 <Mail size={16} /> Email Address
               </label>
               <input
+                id="login-email"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -121,11 +139,16 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <label
+                htmlFor="login-password"
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
                 <Lock size={16} /> Password
               </label>
               <input
+                id="login-password"
                 type="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -133,18 +156,13 @@ export default function Login() {
               />
             </div>
 
-            <button
+            <Button
               type="submit"
-              className="btn btn-primary"
-              disabled={isLoading}
+              loading={isLoading}
               style={{ marginTop: "0.5rem", height: "46px" }}
             >
-              {isLoading ? (
-                <Loader2 className="animate-spin" size={20} />
-              ) : (
-                "Sign In"
-              )}
-            </button>
+              Sign In
+            </Button>
           </form>
         </div>
       </div>

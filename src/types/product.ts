@@ -4,7 +4,6 @@ export interface Product {
   description: string;
   price: number;
   wholesale_price?: number;
-  image: string;
   images?: string[] | string | null;
   category: string;
   origin: string;

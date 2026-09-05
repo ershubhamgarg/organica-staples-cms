@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Mail, MailCheck, BellRing } from "lucide-react";
+import { toast } from "sonner";
 import { useLaunchInterestStore } from "../store/launchInterestStore";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
@@ -10,6 +11,7 @@ import Card from "../components/ui/Card";
 export default function LaunchInterests() {
   const { interests, isLoading, error, fetchInterests, updateEmailSent } =
     useLaunchInterestStore();
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInterests();
@@ -17,9 +19,13 @@ export default function LaunchInterests() {
 
   const handleToggleEmailSent = async (id: string, current: boolean) => {
     try {
+      setTogglingId(id);
       await updateEmailSent(id, !current);
     } catch (err) {
       console.error("Failed to update lead:", err);
+      toast.error("Failed to update follow-up status.");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -86,6 +92,12 @@ export default function LaunchInterests() {
                       <td style={{ padding: "16px", textAlign: "right" }}>
                         <button
                           className="btn-ghost"
+                          data-tooltip={
+                            interest.email_sent
+                              ? "Mark as not yet notified"
+                              : "Mark as notified"
+                          }
+                          disabled={togglingId === interest.id}
                           onClick={() =>
                             handleToggleEmailSent(
                               interest.id,
@@ -97,9 +109,13 @@ export default function LaunchInterests() {
                             alignItems: "center",
                             gap: "6px",
                             marginLeft: "auto",
+                            borderRadius: "var(--radius-full)",
+                            padding: "4px",
                           }}
                         >
-                          {interest.email_sent ? (
+                          {togglingId === interest.id ? (
+                            <Spinner size={14} padding="0" />
+                          ) : interest.email_sent ? (
                             <span className="badge badge-success">
                               <MailCheck size={12} style={{ marginRight: "4px" }} />
                               Notified

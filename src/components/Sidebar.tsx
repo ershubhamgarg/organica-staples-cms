@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
+  Boxes,
   ShoppingCart,
   Users,
   LogOut,
@@ -17,6 +18,7 @@ export default function Sidebar() {
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Package, label: "Products", path: "/products" },
+    { icon: Boxes, label: "Inventory", path: "/inventory" },
     { icon: ShoppingCart, label: "Orders", path: "/orders" },
     { icon: Percent, label: "Coupons", path: "/coupons" },
     { icon: Bell, label: "Launch Interests", path: "/launch-interests" },

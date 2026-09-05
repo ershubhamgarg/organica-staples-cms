@@ -17,11 +17,14 @@ ANNVRIKSH CMS is a premium management dashboard for an ethically sourced, organi
 organica-staples-cms/
 ├── src/
 │   ├── assets/             # Static assets like images and SVGs
-│   ├── components/         # Reusable UI components (Header, Layout, Sidebar)
-│   ├── pages/              # Main view components (Dashboard, Products)
+│   ├── components/         # Header, Layout, Sidebar, ImageUpload
+│   │   └── ui/              # Shared design-system primitives: Button, IconButton,
+│   │                        # Modal (portal-based), Card, PageHeader, EmptyState,
+│   │                        # ErrorBanner, Spinner, ProductImage
+│   ├── pages/              # Main view components (Dashboard, Products, Inventory)
 │   ├── store/              # Zustand state stores (productStore.ts)
 │   ├── types/              # TypeScript interfaces and types (product.ts)
-│   ├── utils/              # Helper utilities (supabase.ts)
+│   ├── utils/              # Helper utilities (supabase.ts, productImage.ts, stockStatus.ts)
 │   ├── App.tsx             # Main application entry point with routing
 │   └── main.tsx            # React DOM mounting
 ├── .env                    # Environment variables (Supabase URL & Key)
@@ -35,16 +38,21 @@ The `Product` interface defines the structure of a product. Its `products` and
 `product_inventory` columns come straight from the storefront's schema, so the two apps stay
 in sync — see `~/Desktop/organica-staples/supabase/migrations` for the authoritative source:
 - `id`, `name`, `description`, `price` (₹), `wholesale_price` (₹, feeds order profit/loss),
-  `image`, `images`, `category`, `origin`, `weight`, `benefits`, `created_at`
+  `images` (jsonb array of URLs), `category`, `origin`, `weight`, `benefits`, `created_at`
+  — **there is no singular `image` column on `products`**; `images[0]` (via
+  `src/utils/productImage.ts`'s `getProductThumbnail()`) is the only real thumbnail source,
+  matching the storefront's own `lib/data.ts` convention. An earlier version of this CMS
+  read/wrote a nonexistent `image` field, which silently broke every product create/update
+  (PostgREST rejects unknown columns) and left images unrendered — fixed by removing the
+  field from the `Product` type entirely.
 - `isVisible`: whether the product shows on the storefront at all
 - `available_quantity`, `reserved_quantity`, `low_stock_threshold`: from the FK'd
-  `product_inventory` table — this, not `available`, is what actually drives customer-facing
-  availability/stock messaging on the storefront
+  `product_inventory` table — see `src/pages/Inventory.tsx` for the dedicated stock
+  management screen, and `src/utils/stockStatus.ts` for the shared In Stock / Low Stock /
+  Out of Stock logic (`qty <= 0` → Out of Stock, `qty <= low_stock_threshold` → Low Stock)
 - `hsn_code`: required for compliant GST invoice line items
 - `launch_status` (`available` / `just_launched` / `launching_soon`), `launch_date`,
   `launch_badge_text`: marketing fields for the storefront's launch features
-- `available`: a legacy CMS-only field, kept for backwards compatibility but no longer used to
-  drive the stock badge (see `available_quantity` instead)
 
 ### State Management (`src/store/productStore.ts`)
 Uses Zustand to manage global product state and handle asynchronous Supabase calls:
@@ -61,7 +69,8 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 ## Key Features
 1. **Admin Authentication:** Secure login system to protect sensitive store data. Only authenticated users can access the dashboard and management tools.
 2. **Dashboard:** Provides a high-level overview of revenue, orders, and recent activity using real-time database counts.
-3. **Product Inventory:** A comprehensive table view of all products with image previews, real stock levels, and visibility status.
+3. **Product List:** A comprehensive table view of all products with image previews and visibility status.
+3b. **Inventory:** A dedicated screen (`src/pages/Inventory.tsx`) for stock management — search, filter by In Stock/Low Stock/Out of Stock, and update available quantity + low-stock threshold per product without touching the rest of the product record.
 4. **Product CRUD:** Full capability to add, edit, and delete products — including stock, GST HSN codes, and launch marketing fields — with drag-and-drop image uploads to Supabase Storage.
 5. **Order Management:** View all customer orders, see detailed item breakdowns, invoice/refund status, and update fulfillment status.
 6. **Coupons:** Create, edit, and deactivate `discount_coupons` used at storefront checkout.
@@ -171,6 +180,45 @@ WHERE schemaname = 'public' AND tablename = 'products';
 `product_launch_interests` already has a permissive `for all using (true)` policy (see
 storefront migration `20260603000000_product_launch_interests.sql`), so the CMS's Launch
 Interests page works without any additional SQL.
+
+### Missing Storage bucket for product image uploads
+
+`src/store/productStore.ts`'s `uploadImage()` uploads to a Supabase Storage bucket named
+`products`, but that bucket does not exist in this project — confirmed directly (both
+`GET /storage/v1/bucket/products` and a direct upload probe return `NoSuchBucket`, and
+`GET /storage/v1/bucket` lists no public buckets at all). This means image uploads through
+the CMS's product form have never worked; whatever images the 22 existing products have
+must have been seeded as external URLs directly into the `images` jsonb column, not
+uploaded through this app. Run this once in the Supabase SQL editor to create it:
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('products', 'products', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Public read access for product images" on storage.objects;
+create policy "Public read access for product images"
+on storage.objects for select
+using (bucket_id = 'products');
+
+drop policy if exists "Admins can upload product images" on storage.objects;
+create policy "Admins can upload product images"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'products');
+
+drop policy if exists "Admins can update product images" on storage.objects;
+create policy "Admins can update product images"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'products');
+
+drop policy if exists "Admins can delete product images" on storage.objects;
+create policy "Admins can delete product images"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'products');
+```
 
 ## Development Workflow
 - Run development server: `npm run dev`

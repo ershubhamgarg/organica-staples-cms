@@ -9,6 +9,7 @@ import {
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
+import Inventory from "./pages/Inventory";
 import Orders from "./pages/Orders";
 import OrderDetails from "./pages/OrderDetails";
 import Coupons from "./pages/Coupons";
@@ -68,6 +69,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="products" element={<Products />} />
+            <Route path="inventory" element={<Inventory />} />
             <Route path="orders" element={<Orders />} />
             <Route path="orders/:id" element={<OrderDetails />} />
             <Route path="coupons" element={<Coupons />} />

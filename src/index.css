@@ -158,6 +158,94 @@ body {
   color: var(--text-primary);
 }
 
+.btn-danger {
+  background: var(--danger);
+  color: var(--color-brand-cream);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #8C231D;
+  transform: translateY(-1px);
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.input-field:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* Compact icon-only action button, used in tables/toolbars */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  position: relative;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-btn.danger {
+  color: var(--danger);
+}
+
+.icon-btn.danger:hover:not(:disabled) {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+/* Dependency-free tooltip for icon-only buttons — set data-tooltip="..." */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--color-brand-green);
+  color: var(--color-brand-cream);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 20;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Form Elements */
 .input-group {
   display: flex;
@@ -300,3 +388,18 @@ tbody tr:hover {
 .badge-danger { background: #F6DEDC; color: #8C231D; }
 .badge-info { background: #DDE8F0; color: #285C82; }
 .badge-secondary { background: #ECE7DA; color: #6B6353; }
+
+/* Login */
+.login-mobile-mark {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .login-branding-panel {
+    display: none !important;
+  }
+
+  .login-mobile-mark {
+    display: block !important;
+  }
+}
