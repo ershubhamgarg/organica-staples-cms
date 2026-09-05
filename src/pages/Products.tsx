@@ -15,6 +15,7 @@ import IconButton from "../components/ui/IconButton";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
 import { getStockStatus } from "../utils/stockStatus";
+import { formatCurrency } from "../utils/currency";
 
 function toDatetimeLocalValue(iso?: string | null): string {
   if (!iso) return "";
@@ -247,7 +248,7 @@ export default function Products() {
                       {product.category}
                     </td>
                     <td style={{ padding: "16px", fontWeight: 500 }}>
-                      ₹{product.price}
+                      ₹{formatCurrency(product.price)}
                     </td>
                     <td style={{ padding: "16px" }}>{product.weight}</td>
                     <td style={{ padding: "16px" }}>

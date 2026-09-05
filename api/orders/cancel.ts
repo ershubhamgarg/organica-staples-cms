@@ -247,7 +247,7 @@ export default async function handler(request: Request): Promise<Response> {
     ) {
       return json(
         {
-          error: `Refund amount must be greater than 0 and no more than ₹${order.total_amount}.`,
+          error: `Refund amount must be greater than 0 and no more than ₹${order.total_amount.toFixed(2)}.`,
         },
         400,
       );

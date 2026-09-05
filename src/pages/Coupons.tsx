@@ -10,6 +10,7 @@ import Card from "../components/ui/Card";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
 import IconButton from "../components/ui/IconButton";
+import { formatCurrency } from "../utils/currency";
 
 const blankCoupon: Coupon = {
   code: "",
@@ -180,7 +181,7 @@ export default function Coupons() {
                     </td>
                     <td style={{ padding: "16px" }}>
                       {coupon.min_order_value != null
-                        ? `₹${coupon.min_order_value.toLocaleString()}`
+                        ? `₹${formatCurrency(coupon.min_order_value)}`
                         : "—"}
                     </td>
                     <td style={{ padding: "16px" }}>

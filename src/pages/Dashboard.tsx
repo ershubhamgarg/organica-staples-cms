@@ -7,6 +7,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import { formatCurrency } from "../utils/currency";
 
 export default function Dashboard() {
   const {
@@ -28,7 +29,7 @@ export default function Dashboard() {
   const stats = [
     {
       label: "Total Revenue",
-      value: `₹${totalRevenue.toLocaleString()}`,
+      value: `₹${formatCurrency(totalRevenue)}`,
       icon: IndianRupee,
       color: "var(--color-brand-green)",
     },

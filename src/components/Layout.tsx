@@ -6,6 +6,7 @@ import Header from "./Header";
 import { supabase } from "../utils/supabase";
 import { useOrderStore } from "../store/orderStore";
 import { useStatsStore } from "../store/statsStore";
+import { formatCurrency } from "../utils/currency";
 
 export default function Layout() {
   const fetchOrders = useOrderStore((state) => state.fetchOrders);
@@ -27,7 +28,7 @@ export default function Layout() {
 
           // Show notification
           toast.success("New Order Received!", {
-            description: `Order for ₹${payload.new.total_amount} from ${payload.new.delivery_address?.name || "Guest"}`,
+            description: `Order for ₹${formatCurrency(payload.new.total_amount)} from ${payload.new.delivery_address?.name || "Guest"}`,
             duration: 5000,
           });
 

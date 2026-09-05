@@ -6,6 +6,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import { formatCurrency } from "../utils/currency";
 
 export default function Customers() {
   const { customers, isLoading, error, fetchCustomers } = useCustomerStore();
@@ -107,7 +108,7 @@ export default function Customers() {
                     </td>
                     <td style={{ padding: "16px" }}>{customer.orderCount}</td>
                     <td style={{ padding: "16px", fontWeight: 600 }}>
-                      ₹{customer.totalSpent.toLocaleString()}
+                      ₹{formatCurrency(customer.totalSpent)}
                     </td>
                     <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
                       {new Date(customer.lastOrderDate).toLocaleDateString()}

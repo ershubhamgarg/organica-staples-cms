@@ -17,6 +17,9 @@ import { useOrderStore, type Order, type RefundMode } from "../store/orderStore"
 import Spinner from "../components/ui/Spinner";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
+import ProductImage from "../components/ui/ProductImage";
+import { getProductThumbnail } from "../utils/productImage";
+import { formatCurrency } from "../utils/currency";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -162,7 +165,7 @@ export default function OrderDetails() {
         });
       } else if (result.refund.success) {
         toast.success(
-          `Refund of ₹${result.refund.amount?.toLocaleString()} ${result.refund.status}.`,
+          `Refund of ₹${formatCurrency(result.refund.amount)} ${result.refund.status}.`,
         );
       }
 
@@ -413,25 +416,11 @@ export default function OrderDetails() {
                       alignItems: "center",
                     }}
                   >
-                    <div
-                      style={{
-                        width: "50px",
-                        height: "50px",
-                        background: "var(--bg-tertiary)",
-                        borderRadius: "8px",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    </div>
+                    <ProductImage
+                      src={getProductThumbnail(item)}
+                      alt={item.name}
+                      size={50}
+                    />
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
                       <div
@@ -440,12 +429,12 @@ export default function OrderDetails() {
                           color: "var(--text-secondary)",
                         }}
                       >
-                        Qty: {item.quantity} × ₹{item.price}
+                        Qty: {item.quantity} × ₹{formatCurrency(item.price)}
                       </div>
                     </div>
                   </div>
                   <div style={{ fontWeight: 600 }}>
-                    ₹{(item.price * item.quantity).toLocaleString()}
+                    ₹{formatCurrency(item.price * item.quantity)}
                   </div>
                 </div>
               ))}
@@ -467,7 +456,7 @@ export default function OrderDetails() {
                   }}
                 >
                   <span>Subtotal</span>
-                  <span>₹{(order.subtotal_amount || 0).toLocaleString()}</span>
+                  <span>₹{formatCurrency(order.subtotal_amount)}</span>
                 </div>
 
                 {order.wholesale_total_amount ? (
@@ -481,7 +470,7 @@ export default function OrderDetails() {
                   >
                     <span>Wholesale Total</span>
                     <span>
-                      ₹{order.wholesale_total_amount.toLocaleString()}
+                      ₹{formatCurrency(order.wholesale_total_amount)}
                     </span>
                   </div>
                 ) : null}
@@ -501,7 +490,7 @@ export default function OrderDetails() {
                         ? ` [${order.discount_percent}%]`
                         : ""}
                     </span>
-                    <span>-₹{order.discount_amount.toLocaleString()}</span>
+                    <span>-₹{formatCurrency(order.discount_amount)}</span>
                   </div>
                 ) : null}
 
@@ -523,7 +512,7 @@ export default function OrderDetails() {
                       }}
                     >
                       {order.shipping_amount && order.shipping_amount > 0
-                        ? `₹${order.shipping_amount.toLocaleString()}`
+                        ? `₹${formatCurrency(order.shipping_amount)}`
                         : "Free"}
                     </span>
                   </div>
@@ -541,7 +530,7 @@ export default function OrderDetails() {
                   >
                     <span>Extra Shipping (Paid by Us)</span>
                     <span style={{ color: "var(--danger)" }}>
-                      -₹{order.extra_shipping_amount.toLocaleString()}
+                      -₹{formatCurrency(order.extra_shipping_amount)}
                     </span>
                   </div>
                 ) : null}
@@ -558,7 +547,7 @@ export default function OrderDetails() {
                   >
                     <span>Convenience Fee</span>
                     <span>
-                      ₹{order.convenience_fee_amount.toLocaleString()}
+                      ₹{formatCurrency(order.convenience_fee_amount)}
                     </span>
                   </div>
                 ) : null}
@@ -573,7 +562,7 @@ export default function OrderDetails() {
                     }}
                   >
                     <span>COD Charges</span>
-                    <span>₹{order.cod_amount.toLocaleString()}</span>
+                    <span>₹{formatCurrency(order.cod_amount)}</span>
                   </div>
                 ) : null}
 
@@ -587,7 +576,7 @@ export default function OrderDetails() {
                   }}
                 >
                   <span>Total</span>
-                  <span>₹{order.total_amount.toLocaleString()}</span>
+                  <span>₹{formatCurrency(order.total_amount)}</span>
                 </div>
               </div>
             </div>
@@ -664,7 +653,7 @@ export default function OrderDetails() {
                     color: profitColor,
                   }}
                 >
-                  ₹{Math.abs(profit).toLocaleString()}
+                  ₹{formatCurrency(Math.abs(profit))}
                 </div>
               </div>
               <div
@@ -715,7 +704,7 @@ export default function OrderDetails() {
                     Cost to Company (CTC)
                   </span>
                   <span style={{ fontWeight: 600 }}>
-                    ₹{order.cost_to_company.toLocaleString()}
+                    ₹{formatCurrency(order.cost_to_company)}
                   </span>
                 </div>
               </div>
@@ -1007,7 +996,7 @@ export default function OrderDetails() {
                           Refund Amount
                         </div>
                         <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                          ₹{order.refund_amount.toLocaleString()}
+                          ₹{formatCurrency(order.refund_amount)}
                         </div>
                       </div>
                     )}
@@ -1280,7 +1269,7 @@ export default function OrderDetails() {
                 onChange={(e) => setRefundMode(e.target.value as RefundMode)}
               >
                 <option value="full">
-                  Full refund (₹{order.total_amount.toLocaleString()})
+                  Full refund (₹{formatCurrency(order.total_amount)})
                 </option>
                 <option value="partial">Partial refund</option>
                 <option value="none">No refund</option>

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { supabase } from "../utils/supabase";
+import { formatCurrency } from "../utils/currency";
 
 interface DashboardStats {
   totalRevenue: number;
@@ -55,7 +56,7 @@ export const useStatsStore = create<DashboardStats>()((set) => ({
         .map(order => ({
           id: `#ORD-${order.id.toString().slice(0, 4).toUpperCase()}`,
           customer: order.delivery_address?.name || 'Guest',
-          total: `₹${order.total_amount}`,
+          total: `₹${formatCurrency(order.total_amount)}`,
           status: order.status.charAt(0).toUpperCase() + order.status.slice(1),
           date: new Date(order.created_at).toLocaleDateString()
         })) || [];

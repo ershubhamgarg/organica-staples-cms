@@ -7,6 +7,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import { formatCurrency } from "../utils/currency";
 
 export default function Orders() {
   const { orders, isLoading, error, fetchOrders } = useOrderStore();
@@ -120,7 +121,7 @@ export default function Orders() {
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
                       <td style={{ padding: "16px", fontWeight: 600 }}>
-                        ₹{order.total_amount.toLocaleString()}
+                        ₹{formatCurrency(order.total_amount)}
                       </td>
                       <td style={{ padding: "16px" }}>
                         <span
@@ -146,7 +147,7 @@ export default function Orders() {
                             : (order.profit_loss || 0) < 0
                               ? "-"
                               : ""}
-                          ₹{Math.abs(order.profit_loss || 0).toLocaleString()}
+                          ₹{formatCurrency(Math.abs(order.profit_loss || 0))}
                         </span>
                       </td>
                       <td style={{ padding: "16px", textAlign: "right" }}>
