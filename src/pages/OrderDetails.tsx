@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Ban,
   RefreshCcw,
+  Weight,
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
 import Spinner from "../components/ui/Spinner";
@@ -20,6 +21,7 @@ import Button from "../components/ui/Button";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
 import { formatCurrency } from "../utils/currency";
+import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -235,6 +237,7 @@ export default function OrderDetails() {
     }
   };
 
+
   if (!order) {
     return <Spinner size={48} padding="4rem" />;
   }
@@ -312,6 +315,13 @@ export default function OrderDetails() {
             <p className="page-subtitle" style={{ margin: 0 }}>
               Placed on {new Date(order.created_at).toLocaleString()}
             </p>
+            <span
+              className="badge badge-secondary"
+              style={{ fontSize: "0.75rem", gap: "5px" }}
+            >
+              <Weight size={12} />
+              {formatWeight(getOrderGrossWeightKg(order.items))}
+            </span>
             {order.shipping_status && (
               <span
                 className={`badge badge-${getShippingBadgeColor(order.shipping_status)}`}

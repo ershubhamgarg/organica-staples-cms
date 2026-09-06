@@ -6,7 +6,11 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // api/ is a separate Vercel serverless-function codebase (its own
+  // tsconfig, checked via `tsc --noEmit -p api/tsconfig.json`) — it has no
+  // Vite/React Fast Refresh concept, so the frontend's React-specific rules
+  // don't apply there.
+  globalIgnores(['dist', 'api']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

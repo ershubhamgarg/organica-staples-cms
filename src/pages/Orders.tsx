@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, PackageSearch } from "lucide-react";
+import { Eye, PackageSearch, Weight } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
@@ -8,6 +8,7 @@ import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
 import { formatCurrency } from "../utils/currency";
+import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 
 export default function Orders() {
   const { orders, isLoading, error, fetchOrders } = useOrderStore();
@@ -71,6 +72,9 @@ export default function Orders() {
                     Total
                   </th>
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>
+                    Weight
+                  </th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>
                     Status
                   </th>
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>
@@ -125,6 +129,15 @@ export default function Orders() {
                       </td>
                       <td style={{ padding: "16px" }}>
                         <span
+                          className="badge badge-secondary"
+                          style={{ gap: "5px" }}
+                        >
+                          <Weight size={12} />
+                          {formatWeight(getOrderGrossWeightKg(order.items))}
+                        </span>
+                      </td>
+                      <td style={{ padding: "16px" }}>
+                        <span
                           className={`badge badge-${getStatusColor(order.status)}`}
                         >
                           {order.status}
@@ -167,7 +180,7 @@ export default function Orders() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <EmptyState icon={PackageSearch} message="No orders found." />
                     </td>
                   </tr>

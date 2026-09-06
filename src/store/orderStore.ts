@@ -21,6 +21,7 @@ export interface CartItem {
   // real `image` column (only `images`, a jsonb array) — see
   // src/utils/productImage.ts's getProductThumbnail, which this matches.
   images?: string[] | string | null;
+  weight?: string;
   wholesale_price?: number;
   [key: string]: any;
 }
