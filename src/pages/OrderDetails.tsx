@@ -13,8 +13,10 @@ import {
   Ban,
   RefreshCcw,
   Weight,
+  Download,
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
+import { supabase } from "../utils/supabase";
 import Spinner from "../components/ui/Spinner";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
@@ -52,6 +54,7 @@ export default function OrderDetails() {
   const [shipShipmentId, setShipShipmentId] = useState("");
   const [shipAwbCode, setShipAwbCode] = useState("");
   const [isSyncingShipping, setIsSyncingShipping] = useState(false);
+  const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -237,6 +240,49 @@ export default function OrderDetails() {
     }
   };
 
+  const handleDownloadInvoice = async () => {
+    if (!order) return;
+
+    try {
+      setIsDownloadingInvoice(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        toast.error("You must be signed in to download invoices.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/orders/invoice?orderId=${encodeURIComponent(order.id)}`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } },
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || "Failed to download invoice.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(order.invoice_number || order.id).replace(/\//g, "-")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download invoice:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to download invoice.",
+      );
+    } finally {
+      setIsDownloadingInvoice(false);
+    }
+  };
 
   if (!order) {
     return <Spinner size={48} padding="4rem" />;
@@ -911,46 +957,68 @@ export default function OrderDetails() {
               >
                 <div
                   style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    marginBottom: "4px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "1rem",
                   }}
                 >
-                  GST Invoice
-                </div>
-                {order.invoice_number ? (
-                  <>
+                  <div>
                     <div
                       style={{
-                        fontWeight: 600,
-                        fontFamily: "monospace",
-                        fontSize: "0.9rem",
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                        marginBottom: "4px",
                       }}
                     >
-                      {order.invoice_number}
+                      GST Invoice
                     </div>
-                    {order.invoice_generated_at && (
+                    {order.invoice_number ? (
+                      <>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontFamily: "monospace",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          {order.invoice_number}
+                        </div>
+                        {order.invoice_generated_at && (
+                          <div
+                            style={{
+                              fontSize: "0.8rem",
+                              color: "var(--text-secondary)",
+                              marginTop: "4px",
+                            }}
+                          >
+                            Generated{" "}
+                            {new Date(
+                              order.invoice_generated_at,
+                            ).toLocaleString()}
+                          </div>
+                        )}
+                      </>
+                    ) : (
                       <div
-                        style={{
-                          fontSize: "0.8rem",
-                          color: "var(--text-secondary)",
-                          marginTop: "4px",
-                        }}
+                        style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}
                       >
-                        Generated{" "}
-                        {new Date(
-                          order.invoice_generated_at,
-                        ).toLocaleString()}
+                        Not yet generated
                       </div>
                     )}
-                  </>
-                ) : (
-                  <div
-                    style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}
-                  >
-                    Not yet generated
                   </div>
-                )}
+                  {order.invoice_pdf_path && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Download size={16} />}
+                      loading={isDownloadingInvoice}
+                      onClick={handleDownloadInvoice}
+                    >
+                      Download
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {order.refund_status && (

@@ -100,6 +100,7 @@ export interface Order {
   customer_name?: string | null;
   invoice_number?: string | null;
   invoice_generated_at?: string | null;
+  invoice_pdf_path?: string | null;
   razorpay_refund_id?: string | null;
   refund_status?: "pending" | "processed" | "failed" | string | null;
   refund_amount?: number | null;
