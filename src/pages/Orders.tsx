@@ -7,6 +7,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 
@@ -98,22 +99,46 @@ export default function Orders() {
                       key={order.id}
                       style={{ borderBottom: "1px solid var(--border-color)" }}
                     >
-                      <td style={{ padding: "16px", fontWeight: 600 }}>
-                        #ORD-{order.id.slice(0, 8).toUpperCase()}
+                      <td
+                        style={{
+                          padding: "16px",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          #ORD-{order.id.slice(0, 8).toUpperCase()}
+                          <CopyButton value={order.id} label="Order ID" />
+                        </div>
                       </td>
                       <td style={{ padding: "16px" }}>
                         <div>
                           <div style={{ fontWeight: 500 }}>
                             {order.delivery_address?.name || "Guest"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: "0.8rem",
-                              color: "var(--text-secondary)",
-                            }}
-                          >
-                            {order.delivery_address?.email}
-                          </div>
+                          {order.delivery_address?.email && (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "0.8rem",
+                                color: "var(--text-secondary)",
+                              }}
+                            >
+                              {order.delivery_address.email}
+                              <CopyButton
+                                value={order.delivery_address.email}
+                                label="Email"
+                              />
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td

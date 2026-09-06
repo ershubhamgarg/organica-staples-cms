@@ -20,10 +20,13 @@ import { supabase } from "../utils/supabase";
 import Spinner from "../components/ui/Spinner";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
+import CopyButton from "../components/ui/CopyButton";
+import InfoRow from "../components/ui/InfoRow";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
+import { formatDateTime } from "../utils/date";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -347,8 +350,12 @@ export default function OrderDetails() {
         }}
       >
         <div>
-          <h1 className="page-title">
+          <h1
+            className="page-title"
+            style={{ display: "flex", alignItems: "center", gap: "8px" }}
+          >
             Order #ORD-{order.id.slice(0, 8).toUpperCase()}
+            <CopyButton value={order.id} label="Order ID" />
           </h1>
           <div
             style={{
@@ -359,7 +366,7 @@ export default function OrderDetails() {
             }}
           >
             <p className="page-subtitle" style={{ margin: 0 }}>
-              Placed on {new Date(order.created_at).toLocaleString()}
+              Placed on {formatDateTime(order.created_at)}
             </p>
             <span
               className="badge badge-secondary"
@@ -775,59 +782,74 @@ export default function OrderDetails() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "10px",
-                marginBottom: "1.5rem",
+                justifyContent: "space-between",
+                marginBottom: "1.25rem",
               }}
             >
-              <MapPin size={20} color="var(--accent-primary)" />
-              <h3 style={{ fontSize: "1.1rem" }}>Delivery Address</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <MapPin size={20} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: "1.1rem" }}>Delivery Address</h3>
+              </div>
+              <CopyButton
+                value={[
+                  order.delivery_address.name,
+                  order.delivery_address.phone,
+                  order.delivery_address.email,
+                  order.delivery_address.address,
+                  [
+                    order.delivery_address.city,
+                    order.delivery_address.state,
+                    order.delivery_address.zipCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
+                  order.delivery_address.country,
+                ]
+                  .filter(Boolean)
+                  .join("\n")}
+                label="Address"
+              />
             </div>
             <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-              }}
+              style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "4px" }}
             >
-              <div style={{ fontWeight: 600, fontSize: "1rem" }}>
-                {order.delivery_address.name}
-              </div>
-              <div
-                style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}
-              >
-                {order.delivery_address.email}
-              </div>
-              <div
-                style={{
-                  color: "var(--text-secondary)",
-                  fontSize: "0.9rem",
-                  marginBottom: "1rem",
-                }}
-              >
-                {order.delivery_address.phone}
-              </div>
-              <div
-                style={{
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
-                  fontSize: "0.9rem",
-                  lineHeight: "1.6",
-                }}
-              >
-                {order.delivery_address.address}
-                <br />
-                {order.delivery_address.city},{" "}
-                {order.delivery_address.state &&
-                  `${order.delivery_address.state}, `}
-                {order.delivery_address.zipCode}
-                {order.delivery_address.country && (
+              {order.delivery_address.name}
+            </div>
+            <div>
+              {order.delivery_address.email && (
+                <InfoRow
+                  label="Email"
+                  value={order.delivery_address.email}
+                  copyValue={order.delivery_address.email}
+                />
+              )}
+              {order.delivery_address.phone && (
+                <InfoRow
+                  label="Phone"
+                  value={order.delivery_address.phone}
+                  copyValue={order.delivery_address.phone}
+                />
+              )}
+              <InfoRow
+                label="Address"
+                stacked
+                value={
                   <>
+                    {order.delivery_address.address}
                     <br />
-                    {order.delivery_address.country}
+                    {order.delivery_address.city},{" "}
+                    {order.delivery_address.state &&
+                      `${order.delivery_address.state}, `}
+                    {order.delivery_address.zipCode}
+                    {order.delivery_address.country && (
+                      <>
+                        <br />
+                        {order.delivery_address.country}
+                      </>
+                    )}
                   </>
-                )}
-              </div>
+                }
+              />
             </div>
           </div>
 
@@ -851,167 +873,61 @@ export default function OrderDetails() {
                 gap: "1rem",
               }}
             >
-              <div
-                style={{
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    marginBottom: "4px",
-                  }}
-                >
+              <div className="card-subsection">
+                <div className="eyebrow" style={{ marginBottom: "6px" }}>
                   Payment Method
                 </div>
-                <div style={{ fontWeight: 600, textTransform: "uppercase" }}>
-                  {order.payment_method}
-                </div>
-
+                <InfoRow
+                  label="Method"
+                  value={
+                    <span style={{ textTransform: "uppercase" }}>
+                      {order.payment_method}
+                    </span>
+                  }
+                />
                 {order.payment_details && (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        Provider
-                      </div>
-                      <div style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                        {order.payment_details.provider}
-                      </div>
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        Transaction ID
-                      </div>
-                      <div
-                        style={{ fontSize: "0.85rem", fontFamily: "monospace" }}
-                      >
-                        {order.payment_details.provider_payment_id}
-                      </div>
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        Status
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.85rem",
-                          color: "var(--success)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {order.payment_details.status}
-                      </div>
-                    </div>
+                  <>
+                    <InfoRow
+                      label="Provider"
+                      value={order.payment_details.provider}
+                    />
+                    <InfoRow
+                      label="Transaction ID"
+                      value={order.payment_details.provider_payment_id}
+                      copyValue={order.payment_details.provider_payment_id}
+                      mono
+                      stacked
+                    />
+                    <InfoRow
+                      label="Status"
+                      value={order.payment_details.status}
+                      valueColor="var(--success)"
+                    />
                     {order.payment_details.verified_at && (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "var(--text-secondary)",
-                          }}
-                        >
-                          Verified At
-                        </div>
-                        <div style={{ fontSize: "0.85rem" }}>
-                          {new Date(
-                            order.payment_details.verified_at,
-                          ).toLocaleString()}
-                        </div>
-                      </div>
+                      <InfoRow
+                        label="Verified At"
+                        value={formatDateTime(order.payment_details.verified_at)}
+                      />
                     )}
-                  </div>
+                  </>
                 )}
               </div>
 
-              <div
-                style={{
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              >
+              <div className="card-subsection">
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "flex-start",
+                    alignItems: "center",
                     justifyContent: "space-between",
-                    gap: "1rem",
+                    marginBottom: "6px",
                   }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "var(--text-secondary)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      GST Invoice
-                    </div>
-                    {order.invoice_number ? (
-                      <>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            fontFamily: "monospace",
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          {order.invoice_number}
-                        </div>
-                        {order.invoice_generated_at && (
-                          <div
-                            style={{
-                              fontSize: "0.8rem",
-                              color: "var(--text-secondary)",
-                              marginTop: "4px",
-                            }}
-                          >
-                            Generated{" "}
-                            {new Date(
-                              order.invoice_generated_at,
-                            ).toLocaleString()}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div
-                        style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}
-                      >
-                        Not yet generated
-                      </div>
-                    )}
-                  </div>
+                  <span className="eyebrow">GST Invoice</span>
                   {order.invoice_pdf_path && (
                     <Button
                       variant="secondary"
                       size="sm"
-                      icon={<Download size={16} />}
+                      icon={<Download size={14} />}
                       loading={isDownloadingInvoice}
                       onClick={handleDownloadInvoice}
                     >
@@ -1019,101 +935,69 @@ export default function OrderDetails() {
                     </Button>
                   )}
                 </div>
+                {order.invoice_number ? (
+                  <>
+                    <InfoRow
+                      label="Invoice Number"
+                      value={order.invoice_number}
+                      copyValue={order.invoice_number}
+                      mono
+                      stacked
+                    />
+                    {order.invoice_generated_at && (
+                      <InfoRow
+                        label="Generated"
+                        value={formatDateTime(order.invoice_generated_at)}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div
+                    style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}
+                  >
+                    Not yet generated
+                  </div>
+                )}
               </div>
 
               {order.refund_status && (
-                <div
-                  style={{
-                    padding: "1rem",
-                    background: "var(--bg-primary)",
-                    borderRadius: "var(--radius-md)",
-                  }}
-                >
+                <div className="card-subsection">
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      marginBottom:
-                        order.refund_amount != null ||
-                        order.razorpay_refund_id ||
-                        order.refunded_at
-                          ? "12px"
-                          : 0,
+                      marginBottom: "6px",
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      Refund Status
-                    </div>
+                    <span className="eyebrow">Refund</span>
                     <span
                       className={`badge badge-${getRefundBadgeColor(order.refund_status)}`}
                     >
                       {order.refund_status.replace(/_/g, " ")}
                     </span>
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                    }}
-                  >
-                    {order.refund_amount != null && (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "var(--text-secondary)",
-                          }}
-                        >
-                          Refund Amount
-                        </div>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                          ₹{formatCurrency(order.refund_amount)}
-                        </div>
-                      </div>
-                    )}
-                    {order.razorpay_refund_id && (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "var(--text-secondary)",
-                          }}
-                        >
-                          Razorpay Refund ID
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.85rem",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {order.razorpay_refund_id}
-                        </div>
-                      </div>
-                    )}
-                    {order.refunded_at && (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "var(--text-secondary)",
-                          }}
-                        >
-                          Refunded At
-                        </div>
-                        <div style={{ fontSize: "0.85rem" }}>
-                          {new Date(order.refunded_at).toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  {order.refund_amount != null && (
+                    <InfoRow
+                      label="Refund Amount"
+                      value={`₹${formatCurrency(order.refund_amount)}`}
+                    />
+                  )}
+                  {order.razorpay_refund_id && (
+                    <InfoRow
+                      label="Refund ID"
+                      value={order.razorpay_refund_id}
+                      copyValue={order.razorpay_refund_id}
+                      mono
+                      stacked
+                    />
+                  )}
+                  {order.refunded_at && (
+                    <InfoRow
+                      label="Refunded At"
+                      value={formatDateTime(order.refunded_at)}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1152,100 +1036,74 @@ export default function OrderDetails() {
                 gap: "1rem",
               }}
             >
-              <div
-                style={{
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    marginBottom: "4px",
-                  }}
-                >
-                  Courier Partner
+              <div className="card-subsection">
+                <div className="eyebrow" style={{ marginBottom: "6px" }}>
+                  Courier &amp; Tracking
                 </div>
-                <div style={{ fontWeight: 600 }}>
-                  {order.shiprocket_courier_name || "Shiprocket (Not Assigned)"}
-                </div>
-
+                <InfoRow
+                  label="Courier Partner"
+                  value={order.shiprocket_courier_name || "Not assigned"}
+                />
                 {order.shiprocket_awb_code && (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        AWB Code
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.85rem",
-                          fontFamily: "monospace",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {order.shiprocket_awb_code}
-                      </div>
-                    </div>
-                    {order.shiprocket_tracking_url && (
-                      <a
-                        href={order.shiprocket_tracking_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          fontSize: "0.85rem",
-                          color: "var(--accent-primary)",
-                          textDecoration: "none",
-                          marginTop: "4px",
-                        }}
-                      >
-                        Track Shipment <ExternalLink size={14} />
-                      </a>
-                    )}
-                  </div>
+                  <InfoRow
+                    label="AWB Code"
+                    value={order.shiprocket_awb_code}
+                    copyValue={order.shiprocket_awb_code}
+                    mono
+                    stacked
+                  />
                 )}
-
-                {order.shipping_error && (
+                {order.shiprocket_tracking_url && (
                   <div
                     style={{
-                      marginTop: "12px",
-                      padding: "8px",
-                      background: "rgba(239, 68, 68, 0.1)",
-                      borderRadius: "4px",
-                      border: "1px solid rgba(239, 68, 68, 0.2)",
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: "8px",
                     }}
                   >
-                    <div
+                    <a
+                      href={order.shiprocket_tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       style={{
-                        fontSize: "0.75rem",
-                        color: "var(--danger)",
-                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        fontSize: "0.85rem",
+                        color: "var(--accent-primary)",
+                        textDecoration: "none",
                       }}
                     >
-                      Logistics Error
-                    </div>
-                    <div style={{ fontSize: "0.8rem", color: "var(--danger)" }}>
-                      {order.shipping_error}
-                    </div>
+                      Track Shipment <ExternalLink size={14} />
+                    </a>
                   </div>
                 )}
               </div>
+
+              {order.shipping_error && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--danger)",
+                      fontWeight: 600,
+                      marginBottom: "2px",
+                    }}
+                  >
+                    Logistics Error
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--danger)" }}>
+                    {order.shipping_error}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

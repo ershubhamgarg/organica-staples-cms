@@ -10,6 +10,7 @@ import Card from "../components/ui/Card";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
 import IconButton from "../components/ui/IconButton";
+import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
 
 const blankCoupon: Coupon = {
@@ -171,7 +172,16 @@ export default function Coupons() {
                         fontFamily: "monospace",
                       }}
                     >
-                      {coupon.code}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        {coupon.code}
+                        <CopyButton value={coupon.code} label="Coupon Code" />
+                      </div>
                     </td>
                     <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
                       {coupon.label || "—"}

@@ -7,6 +7,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import { formatDateTime } from "../utils/date";
 
 export default function LaunchInterests() {
   const { interests, isLoading, error, fetchInterests, updateEmailSent } =
@@ -87,7 +88,7 @@ export default function LaunchInterests() {
                         {interest.customer_email}
                       </td>
                       <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
-                        {new Date(interest.created_at).toLocaleString()}
+                        {formatDateTime(interest.created_at)}
                       </td>
                       <td style={{ padding: "16px", textAlign: "right" }}>
                         <button

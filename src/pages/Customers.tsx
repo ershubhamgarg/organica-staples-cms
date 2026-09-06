@@ -6,6 +6,7 @@ import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Card from "../components/ui/Card";
+import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
 
 export default function Customers() {
@@ -101,10 +102,32 @@ export default function Customers() {
                       {customer.name}
                     </td>
                     <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
-                      {customer.email}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        {customer.email}
+                        <CopyButton value={customer.email} label="Email" />
+                      </div>
                     </td>
                     <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
-                      {customer.phone || "—"}
+                      {customer.phone ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {customer.phone}
+                          <CopyButton value={customer.phone} label="Phone" />
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td style={{ padding: "16px" }}>{customer.orderCount}</td>
                     <td style={{ padding: "16px", fontWeight: 600 }}>
