@@ -299,6 +299,93 @@ body {
   text-align: left;
 }
 
+/* Header global-search live results dropdown */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 380px;
+  overflow-y: auto;
+  z-index: 30;
+  padding: 6px;
+}
+
+.search-dropdown-empty {
+  padding: 14px 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.search-dropdown-group + .search-dropdown-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.search-dropdown-label {
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.search-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+
+.search-dropdown-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.search-dropdown-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.search-dropdown-item-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.search-dropdown-item-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-dropdown-item-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
 /* Dependency-free tooltip for icon-only buttons — set data-tooltip="..." */
 [data-tooltip] {
   position: relative;
@@ -405,6 +492,34 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   z-index: 1000;
   padding: 1rem;
+}
+
+/* Modal.tsx's card: header stays put, only the body scrolls */
+.modal-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem 2rem 1.25rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-body {
+  padding: 1.5rem 2rem 2rem;
+  overflow-y: auto;
 }
 
 .form-group {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Edit2, Trash2, Sprout, Package } from "lucide-react";
 import { toast } from "sonner";
 import { useProductStore } from "../store/productStore";
@@ -39,6 +40,7 @@ export default function Products() {
     uploadImage,
     updateInventory,
   } = useProductStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -98,6 +100,33 @@ export default function Products() {
     }
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || products.length === 0) return;
+
+    const match = products.find((p) => p.id === highlightId);
+    if (match) {
+      // Deep-linking a search result into its edit modal is exactly the
+      // kind of "synchronize with an external system" (the URL) an effect
+      // is for, even though it looks like the generally-discouraged
+      // setState-in-effect pattern.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      handleOpenModal(match);
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("highlight");
+        return next;
+      },
+      { replace: true },
+    );
+    // Only re-run when the URL's highlight param or the loaded product list
+    // changes — handleOpenModal is intentionally excluded, it's re-created
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, products]);
 
   const handleImagesChange = (newImages: string[]) => {
     setFormData({ ...formData, images: newImages });

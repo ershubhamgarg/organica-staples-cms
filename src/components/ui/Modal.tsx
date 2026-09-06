@@ -54,39 +54,28 @@ export default function Modal({
       }}
     >
       <div
-        className="card"
-        style={{
-          width: "90%",
-          maxWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
-          padding: "2rem",
-          position: "relative",
-        }}
+        className="card modal-card"
+        style={{ width: "90%", maxWidth, maxHeight: "90vh" }}
       >
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onClose}
-          disabled={closeDisabled}
-          aria-label="Close"
-          style={{ position: "absolute", top: "1rem", right: "1rem" }}
-        >
-          <X size={20} />
-        </button>
-        <h2
-          style={{
-            marginBottom: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            paddingRight: "2rem",
-          }}
-        >
-          {icon && <span style={{ color: iconColor, display: "flex" }}>{icon}</span>}
-          {title}
-        </h2>
-        {children}
+        <div className="modal-header">
+          <h2 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {icon && (
+              <span style={{ color: iconColor, display: "flex" }}>{icon}</span>
+            )}
+            {title}
+          </h2>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            disabled={closeDisabled}
+            aria-label="Close"
+            style={{ flexShrink: 0 }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
       </div>
     </div>,
     document.body,
