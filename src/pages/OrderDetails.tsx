@@ -58,12 +58,47 @@ export default function OrderDetails() {
   const [shipAwbCode, setShipAwbCode] = useState("");
   const [isSyncingShipping, setIsSyncingShipping] = useState(false);
   const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
+  const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      getOrderById(id).then(setOrder);
-    }
-  }, [id, getOrderById]);
+    if (!id) return;
+
+    let cancelled = false;
+
+    getOrderById(id).then((fetchedOrder) => {
+      if (cancelled) return;
+      setOrder(fetchedOrder);
+
+      // Shiprocket status can change between visits (in transit, delivered,
+      // etc.) — pull the latest the moment the page opens rather than
+      // showing whatever was last saved, but only when there's an AWB to
+      // look up and the shipment isn't already in a terminal state.
+      const awbCode = fetchedOrder?.shiprocket_awb_code;
+      const isTerminal =
+        fetchedOrder?.status === "delivered" ||
+        fetchedOrder?.status === "cancelled" ||
+        fetchedOrder?.shipping_status === "delivered" ||
+        fetchedOrder?.shipping_status === "cancelled";
+
+      if (awbCode && !isTerminal) {
+        setIsRefreshingTracking(true);
+        syncShippingDetails(id, { awbCode })
+          .then((result) => {
+            if (!cancelled) setOrder(result.order);
+          })
+          .catch((err) => {
+            console.error("Failed to refresh shipment tracking:", err);
+          })
+          .finally(() => {
+            if (!cancelled) setIsRefreshingTracking(false);
+          });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, getOrderById, syncShippingDetails]);
 
   const profit = order?.profit_loss || 0;
   const profitMargin =
@@ -381,6 +416,20 @@ export default function OrderDetails() {
                 style={{ fontSize: "0.75rem" }}
               >
                 Shipping: {order.shipping_status.replace("_", " ")}
+              </span>
+            )}
+            {isRefreshingTracking && (
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontSize: "0.75rem",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                <RefreshCcw size={12} className="animate-spin" />
+                Refreshing tracking…
               </span>
             )}
           </div>
