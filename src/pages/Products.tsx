@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Edit2, Trash2, Sprout, Package } from "lucide-react";
+import { Plus, Edit2, Trash2, Sprout, Package, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useProductStore } from "../store/productStore";
 import { type Product } from "../types/product";
@@ -41,6 +41,8 @@ export default function Products() {
     updateInventory,
   } = useProductStore();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -185,6 +187,24 @@ export default function Products() {
     }
   };
 
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(products.map((p) => p.category).filter((c): c is string => Boolean(c))),
+      ).sort((a, b) => a.localeCompare(b)),
+    [products],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return products.filter((product) => {
+      const matchesSearch = !query || product.name.toLowerCase().includes(query);
+      const matchesCategory =
+        categoryFilter === "all" || product.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, search, categoryFilter]);
+
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -200,13 +220,83 @@ export default function Products() {
       {error && <ErrorBanner message={error} />}
 
       <Card>
+        <div
+          style={{
+            display: "flex",
+            gap: "1rem",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            marginBottom: "1.25rem",
+          }}
+        >
+          <div style={{ position: "relative", minWidth: "240px", flex: 1 }}>
+            <Search
+              size={16}
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-secondary)",
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Search products by name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field"
+              style={{ paddingLeft: "36px" }}
+            />
+          </div>
+          {categories.length > 0 && (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setCategoryFilter("all")}
+                className={
+                  categoryFilter === "all" ? "btn btn-secondary" : "btn-ghost"
+                }
+                style={{
+                  padding: "6px 14px",
+                  fontSize: "0.85rem",
+                  borderRadius: "var(--radius-full)",
+                }}
+              >
+                All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setCategoryFilter(category)}
+                  className={
+                    categoryFilter === category
+                      ? "btn btn-secondary"
+                      : "btn-ghost"
+                  }
+                  style={{
+                    padding: "6px 14px",
+                    fontSize: "0.85rem",
+                    borderRadius: "var(--radius-full)",
+                  }}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div style={{ overflowX: "auto" }}>
           {isLoading && products.length === 0 ? (
             <Spinner />
-          ) : products.length === 0 ? (
+          ) : filteredProducts.length === 0 ? (
             <EmptyState
               icon={Sprout}
-              message="No products yet — add your first pantry essential."
+              message={
+                search || categoryFilter !== "all"
+                  ? "No products match your filters."
+                  : "No products yet — add your first pantry essential."
+              }
             />
           ) : (
             <table style={{ width: "100%", textAlign: "left" }}>
@@ -254,7 +344,7 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {products.map((product) => (
+                {filteredProducts.map((product) => (
                   <tr
                     key={product.id}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
