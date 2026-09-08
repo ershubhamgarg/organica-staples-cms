@@ -14,6 +14,7 @@ import IconButton from "../components/ui/IconButton";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
 import { getStockStatus, type StockStatus } from "../utils/stockStatus";
+import { displayNumber, parseNumberInput } from "../utils/number";
 
 type FilterOption = "all" | StockStatus;
 
@@ -340,8 +341,8 @@ export default function Inventory() {
               type="number"
               min={0}
               autoFocus
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
+              value={displayNumber(quantity)}
+              onChange={(e) => setQuantity(parseNumberInput(e.target.value))}
             />
           </div>
           <div className="form-group" style={{ marginTop: "1rem" }}>
@@ -349,8 +350,8 @@ export default function Inventory() {
             <input
               type="number"
               min={0}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
+              value={displayNumber(threshold)}
+              onChange={(e) => setThreshold(parseNumberInput(e.target.value))}
             />
           </div>
 

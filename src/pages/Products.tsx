@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -9,10 +9,12 @@ import {
   Search,
   ArrowUp,
   ArrowDown,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useProductStore } from "../store/productStore";
-import { type Product } from "../types/product";
+import { type Product, type ProductVariant } from "../types/product";
 import { ImageUpload } from "../components/ImageUpload";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
@@ -27,6 +29,7 @@ import { getProductThumbnail } from "../utils/productImage";
 import { getStockStatus } from "../utils/stockStatus";
 import { formatCurrency } from "../utils/currency";
 import { parseWeightKg } from "../utils/weight";
+import { displayNumber, parseNumberInput } from "../utils/number";
 
 type SortField =
   | "none"
@@ -53,6 +56,23 @@ const STOCK_STATUS_RANK: Record<string, number> = {
   out_of_stock: 2,
 };
 
+// A product with variants has no single meaningful stock level of its own
+// — each size/weight tracks its own quantity — so its status badge reflects
+// the worst case across all variants rather than the (unused) base fields.
+function getProductAggregateStatus(product: Product) {
+  if (!product.variants || product.variants.length === 0) {
+    return getStockStatus(product);
+  }
+  const statuses = product.variants.map((v) => getStockStatus(v).status);
+  if (statuses.every((s) => s === "out_of_stock")) {
+    return getStockStatus({ available_quantity: 0, low_stock_threshold: 0 });
+  }
+  if (statuses.some((s) => s === "out_of_stock" || s === "low_stock")) {
+    return { status: "low_stock" as const, label: "Low Stock", variant: "warning" };
+  }
+  return { status: "in_stock" as const, label: "In Stock", variant: "success" };
+}
+
 function compareProducts(a: Product, b: Product, field: SortField): number {
   switch (field) {
     case "name":
@@ -61,8 +81,8 @@ function compareProducts(a: Product, b: Product, field: SortField): number {
       return a.price - b.price;
     case "status":
       return (
-        STOCK_STATUS_RANK[getStockStatus(a).status] -
-        STOCK_STATUS_RANK[getStockStatus(b).status]
+        STOCK_STATUS_RANK[getProductAggregateStatus(a).status] -
+        STOCK_STATUS_RANK[getProductAggregateStatus(b).status]
       );
     case "category":
       return (a.category || "").localeCompare(b.category || "");
@@ -83,6 +103,16 @@ function toDatetimeLocalValue(iso?: string | null): string {
 
 type ProductFormData = Omit<Product, "id" | "created_at">;
 
+const blankVariantRow = (sortOrder: number): ProductVariant => ({
+  label: "",
+  weight: "",
+  price: 0,
+  wholesale_price: 0,
+  available_quantity: 0,
+  low_stock_threshold: 5,
+  sort_order: sortOrder,
+});
+
 export default function Products() {
   const {
     products,
@@ -94,6 +124,7 @@ export default function Products() {
     deleteProduct,
     uploadImage,
     updateInventory,
+    replaceVariants,
   } = useProductStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -104,6 +135,21 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const toggleExpanded = (productId: string) => {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
   const blankFormData: ProductFormData = {
     name: "",
     description: "",
@@ -121,6 +167,7 @@ export default function Products() {
     launch_status: "available",
     launch_date: "",
     launch_badge_text: "",
+    variants: [],
   };
   const [formData, setFormData] = useState<ProductFormData>(blankFormData);
 
@@ -152,6 +199,7 @@ export default function Products() {
         launch_status: product.launch_status || "available",
         launch_date: toDatetimeLocalValue(product.launch_date),
         launch_badge_text: product.launch_badge_text || "",
+        variants: product.variants ?? [],
       });
     } else {
       setEditingProduct(null);
@@ -191,6 +239,43 @@ export default function Products() {
     setFormData({ ...formData, images: newImages });
   };
 
+  const hasVariants = (formData.variants?.length ?? 0) > 0;
+
+  const toggleHasVariants = (checked: boolean) => {
+    setFormData({
+      ...formData,
+      variants: checked
+        ? formData.variants && formData.variants.length > 0
+          ? formData.variants
+          : [blankVariantRow(0)]
+        : [],
+    });
+  };
+
+  const addVariantRow = () => {
+    const current = formData.variants ?? [];
+    setFormData({
+      ...formData,
+      variants: [...current, blankVariantRow(current.length)],
+    });
+  };
+
+  const updateVariantRow = (index: number, patch: Partial<ProductVariant>) => {
+    const current = formData.variants ?? [];
+    setFormData({
+      ...formData,
+      variants: current.map((v, i) => (i === index ? { ...v, ...patch } : v)),
+    });
+  };
+
+  const removeVariantRow = (index: number) => {
+    const current = formData.variants ?? [];
+    setFormData({
+      ...formData,
+      variants: current.filter((_, i) => i !== index),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -199,6 +284,7 @@ export default function Products() {
         available_quantity,
         low_stock_threshold,
         launch_date,
+        variants,
         ...productFields
       } = formData;
       const inventoryUpdates = {
@@ -210,15 +296,26 @@ export default function Products() {
         launch_date: launch_date ? new Date(launch_date).toISOString() : null,
       };
 
+      let productId: string;
       if (editingProduct) {
         await updateProduct(editingProduct.id, productPayload);
         await updateInventory(editingProduct.id, inventoryUpdates);
+        productId = editingProduct.id;
         toast.success("Product updated.");
       } else {
         const created = await addProduct(productPayload);
         await updateInventory(created.id, inventoryUpdates);
+        productId = created.id;
         toast.success("Product added.");
       }
+
+      if (variants && variants.length > 0) {
+        await replaceVariants(productId, variants);
+      } else if (editingProduct?.variants?.length) {
+        // Variants were turned off for a product that previously had them.
+        await replaceVariants(productId, []);
+      }
+
       setIsModalOpen(false);
     } catch (err) {
       console.error("Failed to save product:", err);
@@ -419,6 +516,7 @@ export default function Products() {
                     fontSize: "0.9rem",
                   }}
                 >
+                  <th style={{ padding: "12px 0 12px 16px", width: "28px" }} />
                   <th
                     style={{
                       padding: "12px 16px",
@@ -455,85 +553,212 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {sortedProducts.map((product) => (
-                  <tr
-                    key={product.id}
-                    style={{ borderBottom: "1px solid var(--border-color)" }}
-                  >
-                    <td style={{ padding: "16px" }}>
-                      <ProductImage
-                        src={getProductThumbnail(product)}
-                        alt={product.name}
-                      />
-                    </td>
-                    <td style={{ padding: "16px", fontWeight: 600 }}>
-                      {product.name}
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {product.category}
-                    </td>
-                    <td style={{ padding: "16px", fontWeight: 500 }}>
-                      ₹{formatCurrency(product.price)}
-                    </td>
-                    <td style={{ padding: "16px" }}>{product.weight}</td>
-                    <td style={{ padding: "16px" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "6px",
-                          flexWrap: "wrap",
-                        }}
+                {sortedProducts.map((product) => {
+                  const variants = product.variants ?? [];
+                  const hasVariants = variants.length > 0;
+                  const isExpanded = expandedProductIds.has(product.id);
+                  const aggregateStatus = getProductAggregateStatus(product);
+                  const variantPrices = variants.map((v) => v.price);
+                  const minPrice = Math.min(...variantPrices);
+                  const maxPrice = Math.max(...variantPrices);
+
+                  return (
+                    <Fragment key={product.id}>
+                      <tr
+                        style={{ borderBottom: hasVariants && isExpanded ? "none" : "1px solid var(--border-color)" }}
                       >
-                        {(() => {
-                          const stock = getStockStatus(product);
-                          return (
-                            <span className={`badge badge-${stock.variant}`}>
-                              {stock.label}
+                        <td style={{ padding: "16px 0 16px 16px" }}>
+                          {hasVariants && (
+                            <IconButton
+                              icon={
+                                isExpanded ? (
+                                  <ChevronDown size={16} />
+                                ) : (
+                                  <ChevronRight size={16} />
+                                )
+                              }
+                              tooltip={
+                                isExpanded ? "Hide variants" : "Show variants"
+                              }
+                              onClick={() => toggleExpanded(product.id)}
+                            />
+                          )}
+                        </td>
+                        <td style={{ padding: "16px" }}>
+                          <ProductImage
+                            src={getProductThumbnail(product)}
+                            alt={product.name}
+                          />
+                        </td>
+                        <td style={{ padding: "16px", fontWeight: 600 }}>
+                          {product.name}
+                          {hasVariants && (
+                            <span
+                              className="badge badge-secondary"
+                              style={{
+                                marginLeft: "8px",
+                                fontWeight: 600,
+                                verticalAlign: "middle",
+                              }}
+                            >
+                              {variants.length} variant
+                              {variants.length === 1 ? "" : "s"}
                             </span>
-                          );
-                        })()}
-                        {product.isVisible === false && (
-                          <span className="badge badge-secondary">
-                            Hidden
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: "16px", textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: "4px",
-                        }}
-                      >
-                        <IconButton
-                          icon={<Edit2 size={16} />}
-                          tooltip="Edit product"
-                          onClick={() => handleOpenModal(product)}
-                        />
-                        <IconButton
-                          icon={
-                            deletingId === product.id ? (
-                              <Spinner size={16} padding="0" />
-                            ) : (
-                              <Trash2 size={16} />
-                            )
-                          }
-                          tooltip="Delete product"
-                          danger
-                          disabled={deletingId === product.id}
-                          onClick={() => handleDelete(product)}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: "16px",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
+                          {product.category}
+                        </td>
+                        <td style={{ padding: "16px", fontWeight: 500 }}>
+                          {hasVariants
+                            ? minPrice === maxPrice
+                              ? `₹${formatCurrency(minPrice)}`
+                              : `₹${formatCurrency(minPrice)} – ₹${formatCurrency(maxPrice)}`
+                            : `₹${formatCurrency(product.price)}`}
+                        </td>
+                        <td style={{ padding: "16px" }}>
+                          {hasVariants
+                            ? `${variants.length} size${variants.length === 1 ? "" : "s"}`
+                            : product.weight}
+                        </td>
+                        <td style={{ padding: "16px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span
+                              className={`badge badge-${aggregateStatus.variant}`}
+                            >
+                              {aggregateStatus.label}
+                            </span>
+                            {product.isVisible === false && (
+                              <span className="badge badge-secondary">
+                                Hidden
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: "16px", textAlign: "right" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              gap: "4px",
+                            }}
+                          >
+                            <IconButton
+                              icon={<Edit2 size={16} />}
+                              tooltip="Edit product"
+                              onClick={() => handleOpenModal(product)}
+                            />
+                            <IconButton
+                              icon={
+                                deletingId === product.id ? (
+                                  <Spinner size={16} padding="0" />
+                                ) : (
+                                  <Trash2 size={16} />
+                                )
+                              }
+                              tooltip="Delete product"
+                              danger
+                              disabled={deletingId === product.id}
+                              onClick={() => handleDelete(product)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                      {hasVariants && isExpanded && (
+                        <tr
+                          key={`${product.id}-variants`}
+                          style={{ borderBottom: "1px solid var(--border-color)" }}
+                        >
+                          <td></td>
+                          <td colSpan={7} style={{ padding: "0 16px 16px" }}>
+                            <div
+                              style={{
+                                background: "var(--bg-primary)",
+                                borderRadius: "var(--radius-md)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <table style={{ width: "100%", textAlign: "left" }}>
+                                <thead>
+                                  <tr
+                                    style={{
+                                      fontSize: "0.8rem",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Variant
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Weight
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Price
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Quantity
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Status
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {variants
+                                    .slice()
+                                    .sort(
+                                      (a, b) =>
+                                        (a.sort_order ?? 0) - (b.sort_order ?? 0),
+                                    )
+                                    .map((variant, index) => {
+                                      const variantStatus = getStockStatus(variant);
+                                      return (
+                                        <tr
+                                          key={variant.id ?? index}
+                                          style={{ fontSize: "0.85rem" }}
+                                        >
+                                          <td style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                            {variant.label}
+                                          </td>
+                                          <td style={{ padding: "10px 12px" }}>
+                                            {variant.weight}
+                                          </td>
+                                          <td style={{ padding: "10px 12px" }}>
+                                            ₹{formatCurrency(variant.price)}
+                                          </td>
+                                          <td style={{ padding: "10px 12px" }}>
+                                            {variant.available_quantity ?? 0}
+                                          </td>
+                                          <td style={{ padding: "10px 12px" }}>
+                                            <span
+                                              className={`badge badge-${variantStatus.variant}`}
+                                            >
+                                              {variantStatus.label}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -586,11 +811,11 @@ export default function Products() {
                 <input
                   type="number"
                   required
-                  value={formData.price}
+                  value={displayNumber(formData.price)}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      price: Number(e.target.value),
+                      price: parseNumberInput(e.target.value),
                     })
                   }
                 />
@@ -600,11 +825,11 @@ export default function Products() {
                 <input
                   type="number"
                   required
-                  value={formData.wholesale_price}
+                  value={displayNumber(formData.wholesale_price)}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      wholesale_price: Number(e.target.value),
+                      wholesale_price: parseNumberInput(e.target.value),
                     })
                   }
                 />
@@ -615,11 +840,11 @@ export default function Products() {
                   type="number"
                   min={0}
                   required
-                  value={formData.available_quantity ?? 0}
+                  value={displayNumber(formData.available_quantity)}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      available_quantity: Number(e.target.value),
+                      available_quantity: parseNumberInput(e.target.value),
                     })
                   }
                 />
@@ -630,11 +855,11 @@ export default function Products() {
                   type="number"
                   min={0}
                   required
-                  value={formData.low_stock_threshold ?? 5}
+                  value={displayNumber(formData.low_stock_threshold)}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      low_stock_threshold: Number(e.target.value),
+                      low_stock_threshold: parseNumberInput(e.target.value),
                     })
                   }
                 />
@@ -684,6 +909,189 @@ export default function Products() {
                   }
                 />
               </div>
+
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={hasVariants}
+                    onChange={(e) => toggleHasVariants(e.target.checked)}
+                    style={{ width: "auto" }}
+                  />
+                  This product has size/weight variants
+                </label>
+                {hasVariants && (
+                  <p
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "var(--text-secondary)",
+                      marginTop: "0.4rem",
+                    }}
+                  >
+                    The Selling Price and Weight fields above are used only as
+                    a fallback for products without variants.
+                  </p>
+                )}
+              </div>
+
+              {hasVariants && (
+                <div style={{ gridColumn: "span 2" }}>
+                  <label
+                    style={{
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                      color: "var(--text-secondary)",
+                      display: "block",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Variants
+                  </label>
+                  {(formData.variants ?? []).map((variant, index) => (
+                    <div
+                      key={variant.id ?? `new-${index}`}
+                      className="card-subsection"
+                      style={{ marginBottom: "0.75rem" }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
+                        <span className="eyebrow">Variant {index + 1}</span>
+                        <IconButton
+                          icon={<Trash2 size={16} />}
+                          tooltip="Remove variant"
+                          danger
+                          onClick={() => removeVariantRow(index)}
+                        />
+                      </div>
+
+                      <div
+                        className="responsive-grid"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1.3fr 1fr",
+                          gap: "0.75rem",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Variant Label</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 5 Kg Pack"
+                            required
+                            value={variant.label}
+                            onChange={(e) =>
+                              updateVariantRow(index, { label: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Weight</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 5kg"
+                            required
+                            value={variant.weight}
+                            onChange={(e) =>
+                              updateVariantRow(index, { weight: e.target.value })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div
+                        className="responsive-grid"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Selling Price (₹)</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 649"
+                            min={0}
+                            required
+                            value={displayNumber(variant.price)}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                price: parseNumberInput(e.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Wholesale Price (₹)</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 480"
+                            min={0}
+                            value={displayNumber(variant.wholesale_price)}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                wholesale_price: parseNumberInput(e.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Stock Quantity</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 50"
+                            min={0}
+                            value={displayNumber(variant.available_quantity)}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                available_quantity: parseNumberInput(e.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Low Stock Alert Below</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 5"
+                            min={0}
+                            value={displayNumber(variant.low_stock_threshold)}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                low_stock_threshold: parseNumberInput(e.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Plus size={14} />}
+                    onClick={addVariantRow}
+                  >
+                    Add Variant
+                  </Button>
+                </div>
+              )}
+
               <div className="form-group">
                 <label>Launch Status</label>
                 <select

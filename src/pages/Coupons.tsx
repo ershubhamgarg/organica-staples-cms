@@ -12,6 +12,7 @@ import Button from "../components/ui/Button";
 import IconButton from "../components/ui/IconButton";
 import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
+import { displayNumber, parseNumberInput } from "../utils/number";
 
 const blankCoupon: Coupon = {
   code: "",
@@ -293,11 +294,11 @@ export default function Coupons() {
                   required
                   min={0}
                   max={100}
-                  value={formData.percent}
+                  value={displayNumber(formData.percent)}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      percent: Number(e.target.value),
+                      percent: parseNumberInput(e.target.value),
                     })
                   }
                 />

@@ -27,6 +27,7 @@ import { getProductThumbnail } from "../utils/productImage";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { formatDateTime } from "../utils/date";
+import { displayNumber, parseNumberInput } from "../utils/number";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -1270,8 +1271,8 @@ export default function OrderDetails() {
                   type="number"
                   min={1}
                   max={order.total_amount}
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(Number(e.target.value))}
+                  value={displayNumber(refundAmount)}
+                  onChange={(e) => setRefundAmount(parseNumberInput(e.target.value))}
                   placeholder="Refund amount (₹)"
                   style={{ marginTop: "0.75rem" }}
                 />
