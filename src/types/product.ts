@@ -6,6 +6,8 @@ export interface ProductVariant {
   weight: string;
   price: number;
   wholesale_price?: number | null;
+  /** 0-100. Applied to `price` to get what the customer actually pays. */
+  discount_percent?: number | null;
   sku?: string | null;
   sort_order?: number;
   is_active?: boolean;

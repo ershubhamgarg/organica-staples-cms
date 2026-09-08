@@ -214,6 +214,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               weight: variant.weight,
               price: variant.price,
               wholesale_price: variant.wholesale_price ?? null,
+              discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
               is_active: variant.is_active ?? true,
             })
@@ -236,6 +237,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               weight: variant.weight,
               price: variant.price,
               wholesale_price: variant.wholesale_price ?? null,
+              discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
             })
             .select()

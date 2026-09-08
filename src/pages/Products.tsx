@@ -108,6 +108,7 @@ const blankVariantRow = (sortOrder: number): ProductVariant => ({
   weight: "",
   price: 0,
   wholesale_price: 0,
+  discount_percent: 0,
   available_quantity: 0,
   low_stock_threshold: 5,
   sort_order: sortOrder,
@@ -723,6 +724,8 @@ export default function Products() {
                                     )
                                     .map((variant, index) => {
                                       const variantStatus = getStockStatus(variant);
+                                      const discountPercent =
+                                        variant.discount_percent ?? 0;
                                       return (
                                         <tr
                                           key={variant.id ?? index}
@@ -735,7 +738,41 @@ export default function Products() {
                                             {variant.weight}
                                           </td>
                                           <td style={{ padding: "10px 12px" }}>
-                                            ₹{formatCurrency(variant.price)}
+                                            {discountPercent > 0 ? (
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "6px",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    color: "var(--text-secondary)",
+                                                    textDecoration: "line-through",
+                                                  }}
+                                                >
+                                                  ₹{formatCurrency(variant.price)}
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    fontWeight: 600,
+                                                    color: "var(--success)",
+                                                  }}
+                                                >
+                                                  ₹
+                                                  {formatCurrency(
+                                                    variant.price *
+                                                      (1 - discountPercent / 100),
+                                                  )}
+                                                </span>
+                                                <span className="badge badge-success">
+                                                  -{discountPercent}%
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              `₹${formatCurrency(variant.price)}`
+                                            )}
                                           </td>
                                           <td style={{ padding: "10px 12px" }}>
                                             {variant.available_quantity ?? 0}
@@ -954,132 +991,204 @@ export default function Products() {
                   >
                     Variants
                   </label>
-                  {(formData.variants ?? []).map((variant, index) => (
-                    <div
-                      key={variant.id ?? `new-${index}`}
-                      className="card-subsection"
-                      style={{ marginBottom: "0.75rem" }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: "0.75rem",
-                        }}
-                      >
-                        <span className="eyebrow">Variant {index + 1}</span>
-                        <IconButton
-                          icon={<Trash2 size={16} />}
-                          tooltip="Remove variant"
-                          danger
-                          onClick={() => removeVariantRow(index)}
-                        />
-                      </div>
+                  {(formData.variants ?? []).map((variant, index) => {
+                    const discountPercent = variant.discount_percent ?? 0;
+                    const effectivePrice =
+                      variant.price * (1 - discountPercent / 100);
 
+                    return (
                       <div
-                        className="responsive-grid"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1.3fr 1fr",
-                          gap: "0.75rem",
-                          marginBottom: "0.75rem",
-                        }}
+                        key={variant.id ?? `new-${index}`}
+                        className="card-subsection"
+                        style={{ marginBottom: "1rem" }}
                       >
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Variant Label</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 5 Kg Pack"
-                            required
-                            value={variant.label}
-                            onChange={(e) =>
-                              updateVariantRow(index, { label: e.target.value })
-                            }
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: "1rem",
+                            paddingBottom: "0.75rem",
+                            borderBottom: "1px solid var(--border-color)",
+                          }}
+                        >
+                          <span className="eyebrow">Variant {index + 1}</span>
+                          <IconButton
+                            icon={<Trash2 size={16} />}
+                            tooltip="Remove variant"
+                            danger
+                            onClick={() => removeVariantRow(index)}
                           />
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Weight</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 5kg"
-                            required
-                            value={variant.weight}
-                            onChange={(e) =>
-                              updateVariantRow(index, { weight: e.target.value })
-                            }
-                          />
-                        </div>
-                      </div>
 
-                      <div
-                        className="responsive-grid"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Selling Price (₹)</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 649"
-                            min={0}
-                            required
-                            value={displayNumber(variant.price)}
-                            onChange={(e) =>
-                              updateVariantRow(index, {
-                                price: parseNumberInput(e.target.value),
-                              })
-                            }
-                          />
+                        <div
+                          className="responsive-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1.3fr 1fr",
+                            gap: "1rem",
+                            marginBottom: "1rem",
+                          }}
+                        >
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Variant Label</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 5 Kg Pack"
+                              required
+                              value={variant.label}
+                              onChange={(e) =>
+                                updateVariantRow(index, { label: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Weight</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 5kg"
+                              required
+                              value={variant.weight}
+                              onChange={(e) =>
+                                updateVariantRow(index, { weight: e.target.value })
+                              }
+                            />
+                          </div>
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Wholesale Price (₹)</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 480"
-                            min={0}
-                            value={displayNumber(variant.wholesale_price)}
-                            onChange={(e) =>
-                              updateVariantRow(index, {
-                                wholesale_price: parseNumberInput(e.target.value),
-                              })
-                            }
-                          />
+
+                        <div
+                          className="eyebrow"
+                          style={{ marginBottom: "0.6rem" }}
+                        >
+                          Pricing
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Stock Quantity</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 50"
-                            min={0}
-                            value={displayNumber(variant.available_quantity)}
-                            onChange={(e) =>
-                              updateVariantRow(index, {
-                                available_quantity: parseNumberInput(e.target.value),
-                              })
-                            }
-                          />
+                        <div
+                          className="responsive-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "1rem",
+                            marginBottom: "1rem",
+                          }}
+                        >
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Selling Price (₹)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 649"
+                              min={0}
+                              required
+                              value={displayNumber(variant.price)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  price: parseNumberInput(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Discount (%)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 10"
+                              min={0}
+                              max={100}
+                              value={displayNumber(variant.discount_percent)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  discount_percent: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Customer Pays</label>
+                            <div
+                              style={{
+                                padding: "12px 16px",
+                                background: "var(--bg-secondary)",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: "var(--radius-md)",
+                                fontWeight: 600,
+                                color:
+                                  discountPercent > 0
+                                    ? "var(--success)"
+                                    : "var(--text-primary)",
+                              }}
+                            >
+                              ₹{formatCurrency(effectivePrice)}
+                            </div>
+                          </div>
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Low Stock Alert Below</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 5"
-                            min={0}
-                            value={displayNumber(variant.low_stock_threshold)}
-                            onChange={(e) =>
-                              updateVariantRow(index, {
-                                low_stock_threshold: parseNumberInput(e.target.value),
-                              })
-                            }
-                          />
+
+                        <div
+                          className="eyebrow"
+                          style={{ marginBottom: "0.6rem" }}
+                        >
+                          Cost &amp; Inventory
+                        </div>
+                        <div
+                          className="responsive-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "1rem",
+                          }}
+                        >
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Wholesale Price (₹)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 480"
+                              min={0}
+                              value={displayNumber(variant.wholesale_price)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  wholesale_price: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Stock Quantity</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 50"
+                              min={0}
+                              value={displayNumber(variant.available_quantity)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  available_quantity: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Low Stock Alert Below</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 5"
+                              min={0}
+                              value={displayNumber(variant.low_stock_threshold)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  low_stock_threshold: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <Button
                     type="button"
                     variant="secondary"

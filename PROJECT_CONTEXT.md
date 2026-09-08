@@ -248,6 +248,37 @@ The Order Details page only shows the "Download" button when `order.invoice_pdf_
 (older orders placed before this feature existed have no stored PDF and show "Not yet
 generated" instead, matching the storefront's own display logic).
 
+### Product variants (`product_variants` / `product_variant_inventory`)
+
+Products can optionally have size/weight variants (e.g. 5 Kg vs 10 Kg bags), each with its own
+price, wholesale cost, and stock — schema owned by the storefront repo's migration
+`supabase/migrations/20260910000000_product_variants.sql` (`product_variants`, keyed to
+`products.id`, plus a separate `product_variant_inventory` table for per-variant stock, mirroring
+how the base product's own stock lives in `product_inventory` rather than on `products` itself).
+Products with zero variants are completely unaffected and keep using the base product's own
+`price`/`available_quantity`/`low_stock_threshold` fields directly.
+
+Each variant can also carry its own **discount percentage** (`discount_percent`, 0-100, applied to
+that variant's `price` to get what the customer actually pays) — added here, and not yet present
+in the storefront repo's migration, since it's currently an admin-side pricing tool. Confirmed via
+a live query that `product_variants` does **not** yet have this column
+(`GET /product_variants?select=*` returns rows with no `discount_percent` key). Run this once in
+the Supabase SQL editor before using the Discount (%) field in the product form — the CMS silently
+writes `0` for every variant until this column exists, since Supabase/PostgREST rejects an
+insert/update referencing an unknown column outright rather than ignoring it:
+
+```sql
+alter table public.product_variants
+  add column if not exists discount_percent numeric not null default 0
+  check (discount_percent >= 0 and discount_percent <= 100);
+```
+
+If the storefront's own checkout/product pages should also honor this discount (rather than it
+being purely an internal CMS pricing note for now), the same column needs adding to that repo's
+migrations too, and its variant-selection UI updated to price against
+`price * (1 - discount_percent / 100)` — out of scope here since this task only covers the CMS
+side.
+
 ## Development Workflow
 - Run development server: `npm run dev`
 - Build for production: `npm run build`
