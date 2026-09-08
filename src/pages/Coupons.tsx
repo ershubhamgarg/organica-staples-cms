@@ -254,6 +254,7 @@ export default function Coupons() {
         >
           <form onSubmit={handleSubmit}>
             <div
+              className="responsive-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",

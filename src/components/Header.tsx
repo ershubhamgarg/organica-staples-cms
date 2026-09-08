@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ShoppingBag } from "lucide-react";
+import { Search, ShoppingBag, Menu } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { useProductStore } from "../store/productStore";
 import { useOrderStore, type Order } from "../store/orderStore";
 import { type Product } from "../types/product";
 import ProductImage from "./ui/ProductImage";
+import IconButton from "./ui/IconButton";
 import { getProductThumbnail } from "../utils/productImage";
 import { formatCurrency } from "../utils/currency";
+
+interface HeaderProps {
+  onMenuClick: () => void;
+}
 
 const MAX_RESULTS = 5;
 
@@ -33,7 +38,7 @@ function matchesOrder(order: Order, query: string, hexQuery: string): boolean {
   );
 }
 
-export default function Header() {
+export default function Header({ onMenuClick }: HeaderProps) {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +121,7 @@ export default function Header() {
 
   return (
     <header
+      className="app-header"
       style={{
         height: "70px",
         borderBottom: "1px solid var(--border-color)",
@@ -123,13 +129,24 @@ export default function Header() {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 2rem",
+        gap: "1rem",
         position: "sticky",
         top: 0,
         zIndex: 10,
       }}
     >
-      <div ref={containerRef} style={{ position: "relative", width: "340px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
+        <IconButton
+          icon={<Menu size={20} />}
+          tooltip="Menu"
+          className="header-hamburger"
+          onClick={onMenuClick}
+        />
+        <div
+          ref={containerRef}
+          className="header-search"
+          style={{ position: "relative", width: "340px" }}
+        >
         <Search
           size={18}
           style={{
@@ -219,9 +236,10 @@ export default function Header() {
             )}
           </div>
         )}
+        </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
         <div
           style={{
             width: "38px",
@@ -234,11 +252,12 @@ export default function Header() {
             justifyContent: "center",
             fontWeight: 700,
             fontSize: "0.95rem",
+            flexShrink: 0,
           }}
         >
           {(user?.email?.[0] || "A").toUpperCase()}
         </div>
-        <div>
+        <div className="header-user-text">
           <div style={{ fontSize: "0.88rem", fontWeight: 600 }}>Admin</div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
             {user?.email}

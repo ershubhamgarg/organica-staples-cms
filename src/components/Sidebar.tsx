@@ -8,11 +8,17 @@ import {
   LogOut,
   Percent,
   Bell,
+  X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import logoMark from "../assets/annvriksh-mark.png";
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const { signOut, user } = useAuthStore();
   const navItems = [
@@ -32,6 +38,7 @@ export default function Sidebar() {
 
   return (
     <aside
+      className={isOpen ? "sidebar sidebar-open" : "sidebar"}
       style={{
         width: "260px",
         backgroundColor: "var(--color-brand-green)",
@@ -41,36 +48,60 @@ export default function Sidebar() {
         gap: "2rem",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <img
-          src={logoMark}
-          alt="ANNVRIKSH"
-          style={{ width: "36px", height: "36px", objectFit: "contain" }}
-        />
-        <div>
-          <h2
-            style={{
-              fontFamily: "'Fraunces', Georgia, serif",
-              fontSize: "1.15rem",
-              fontWeight: 600,
-              letterSpacing: "0.03em",
-              color: "var(--color-brand-cream)",
-              lineHeight: 1.1,
-            }}
-          >
-            ANNVRIKSH
-          </h2>
-          <span
-            style={{
-              fontSize: "0.65rem",
-              fontWeight: 600,
-              letterSpacing: "0.15em",
-              color: "var(--color-brand-gold-light)",
-            }}
-          >
-            CMS
-          </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <img
+            src={logoMark}
+            alt="ANNVRIKSH"
+            style={{ width: "36px", height: "36px", objectFit: "contain" }}
+          />
+          <div>
+            <h2
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: "1.15rem",
+                fontWeight: 600,
+                letterSpacing: "0.03em",
+                color: "var(--color-brand-cream)",
+                lineHeight: 1.1,
+              }}
+            >
+              ANNVRIKSH
+            </h2>
+            <span
+              style={{
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                letterSpacing: "0.15em",
+                color: "var(--color-brand-gold-light)",
+              }}
+            >
+              CMS
+            </span>
+          </div>
         </div>
+        <button
+          type="button"
+          className="sidebar-close"
+          onClick={onClose}
+          aria-label="Close menu"
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--color-brand-cream)",
+            cursor: "pointer",
+            padding: "4px",
+          }}
+        >
+          <X size={22} />
+        </button>
       </div>
 
       <nav
@@ -85,6 +116,7 @@ export default function Sidebar() {
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={onClose}
             style={({ isActive }) => ({
               display: "flex",
               alignItems: "center",

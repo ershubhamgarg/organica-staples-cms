@@ -381,13 +381,15 @@ export default function OrderDetails() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: "1rem",
           marginBottom: "2rem",
         }}
       >
         <div>
           <h1
             className="page-title"
-            style={{ display: "flex", alignItems: "center", gap: "8px" }}
+            style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}
           >
             Order #ORD-{order.id.slice(0, 8).toUpperCase()}
             <CopyButton value={order.id} label="Order ID" />
@@ -395,8 +397,9 @@ export default function OrderDetails() {
           <div
             style={{
               display: "flex",
-              gap: "1rem",
+              gap: "0.75rem",
               alignItems: "center",
+              flexWrap: "wrap",
               marginTop: "4px",
             }}
           >
@@ -490,6 +493,7 @@ export default function OrderDetails() {
       </div>
 
       <div
+        className="responsive-grid"
         style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "2rem" }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -736,6 +740,7 @@ export default function OrderDetails() {
             </div>
 
             <div
+              className="responsive-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",

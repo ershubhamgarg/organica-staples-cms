@@ -101,7 +101,32 @@ body {
   flex-direction: column;
   overflow-y: auto;
   position: relative;
+  min-width: 0;
 }
+
+.app-header {
+  padding: 0 2rem;
+}
+
+.app-main {
+  padding: 2rem;
+}
+
+.sidebar-close {
+  display: none;
+}
+
+.header-hamburger {
+  display: none;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 24, 16, 0.5);
+  z-index: 150;
+}
+
 
 /* Button Styles */
 .btn {
@@ -607,5 +632,141 @@ tbody tr:hover {
 
   .login-mobile-mark {
     display: block !important;
+  }
+}
+
+/* Mobile layout — sidebar becomes an off-canvas drawer, header/content
+   density drops, and any fixed multi-column grid collapses to one column.
+   Shrinking the root font-size is the main lever: almost every font-size
+   and most spacing in this file/inline styles is declared in rem, so this
+   single change cascades through headings, badges, buttons, form labels,
+   etc. and gives the app a denser, native-app feel instead of a shrunk
+   desktop layout. Table cell padding and a handful of px-based paddings
+   are absolute and need their own overrides below. */
+@media (max-width: 880px) {
+  html {
+    font-size: 15px;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(280px, 82vw) !important;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 200;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+  }
+
+  .header-hamburger {
+    display: inline-flex;
+  }
+
+  .app-header {
+    padding: 0 1rem;
+    height: 60px !important;
+  }
+
+  .header-search {
+    width: 100% !important;
+  }
+
+  .header-user-text {
+    display: none;
+  }
+
+  .app-main {
+    padding: 1.25rem;
+  }
+
+  .card:not(.modal-card) {
+    padding: 1rem !important;
+  }
+
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .modal-header {
+    padding: 1.25rem 1.25rem 1rem;
+  }
+
+  .modal-body {
+    padding: 1.25rem;
+  }
+
+  .page-title {
+    font-size: 1.4rem;
+  }
+
+  .page-subtitle {
+    margin-bottom: 1.25rem;
+  }
+
+  /* Table cell padding is hardcoded in px per page — this is the one place
+     an !important override is unavoidable since inline styles otherwise
+     always win. */
+  table td,
+  table th {
+    padding: 10px 12px !important;
+  }
+
+  table {
+    font-size: 0.85rem;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+  }
+
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    padding: 10px 14px;
+  }
+
+  /* Anything the visitor types into must stay at 16px or iOS Safari
+     zooms the whole page in on focus — the root font-size drop above
+     would otherwise take these below that threshold. */
+  .input-field,
+  .form-group input,
+  .form-group textarea,
+  .form-group select,
+  select {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-main {
+    padding: 1rem;
+  }
+
+  .card:not(.modal-card) {
+    padding: 0.85rem !important;
+  }
+
+  table td,
+  table th {
+    padding: 8px 10px !important;
+  }
+
+  table {
+    font-size: 0.8rem;
+  }
+
+  .page-title {
+    font-size: 1.25rem;
   }
 }

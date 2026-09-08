@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -11,6 +11,15 @@ import { formatCurrency } from "../utils/currency";
 export default function Layout() {
   const fetchOrders = useOrderStore((state) => state.fetchOrders);
   const fetchStats = useStatsStore((state) => state.fetchStats);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    // Closing the mobile drawer on navigation is synchronizing with an
+    // external system (the URL), not reacting to a prop/state change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     // Listen for new orders
@@ -52,10 +61,19 @@ export default function Layout() {
 
   return (
     <div className="app-container">
-      <Sidebar />
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+      />
+      {isSidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
       <div className="main-content">
-        <Header />
-        <main style={{ padding: "2rem", flex: 1, overflowY: "auto" }}>
+        <Header onMenuClick={() => setIsSidebarOpen((prev) => !prev)} />
+        <main className="app-main" style={{ flex: 1, overflowY: "auto" }}>
           <Outlet />
         </main>
       </div>
