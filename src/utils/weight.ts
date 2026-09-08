@@ -1,7 +1,7 @@
 // Mirrors the storefront's lib/shiprocket.ts parseWeightKg exactly, so the
 // gross weight shown here always matches what Shiprocket is actually quoted
 // for shipping this same order.
-function parseWeightKg(weight: string | undefined | null): number {
+export function parseWeightKg(weight: string | undefined | null): number {
   if (!weight) return 0;
   const normalized = weight.toLowerCase();
   const match = normalized.match(/(\d+(?:\.\d+)?)/);

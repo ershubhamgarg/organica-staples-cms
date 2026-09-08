@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Edit2, Trash2, Sprout, Package, Search } from "lucide-react";
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Sprout,
+  Package,
+  Search,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useProductStore } from "../store/productStore";
 import { type Product } from "../types/product";
@@ -17,6 +26,52 @@ import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
 import { getStockStatus } from "../utils/stockStatus";
 import { formatCurrency } from "../utils/currency";
+import { parseWeightKg } from "../utils/weight";
+
+type SortField =
+  | "none"
+  | "name"
+  | "price"
+  | "status"
+  | "category"
+  | "weight";
+type SortDirection = "asc" | "desc";
+
+const sortFieldLabels: Record<Exclude<SortField, "none">, string> = {
+  name: "Name",
+  price: "Price",
+  status: "Status",
+  category: "Category",
+  weight: "Weight",
+};
+
+// In-stock products sort first in ascending order, then low stock, then out
+// of stock — matches the order they should read top-to-bottom by default.
+const STOCK_STATUS_RANK: Record<string, number> = {
+  in_stock: 0,
+  low_stock: 1,
+  out_of_stock: 2,
+};
+
+function compareProducts(a: Product, b: Product, field: SortField): number {
+  switch (field) {
+    case "name":
+      return a.name.localeCompare(b.name);
+    case "price":
+      return a.price - b.price;
+    case "status":
+      return (
+        STOCK_STATUS_RANK[getStockStatus(a).status] -
+        STOCK_STATUS_RANK[getStockStatus(b).status]
+      );
+    case "category":
+      return (a.category || "").localeCompare(b.category || "");
+    case "weight":
+      return parseWeightKg(a.weight) - parseWeightKg(b.weight);
+    default:
+      return 0;
+  }
+}
 
 function toDatetimeLocalValue(iso?: string | null): string {
   if (!iso) return "";
@@ -43,6 +98,8 @@ export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortField, setSortField] = useState<SortField>("none");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -205,6 +262,14 @@ export default function Products() {
     });
   }, [products, search, categoryFilter]);
 
+  const sortedProducts = useMemo(() => {
+    if (sortField === "none") return filteredProducts;
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...filteredProducts].sort(
+      (a, b) => compareProducts(a, b, sortField) * direction,
+    );
+  }, [filteredProducts, sortField, sortDirection]);
+
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -249,29 +314,20 @@ export default function Products() {
               style={{ paddingLeft: "36px" }}
             />
           </div>
-          {categories.length > 0 && (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => setCategoryFilter("all")}
-                className={
-                  categoryFilter === "all" ? "btn btn-secondary" : "btn-ghost"
-                }
-                style={{
-                  padding: "6px 14px",
-                  fontSize: "0.85rem",
-                  borderRadius: "var(--radius-full)",
-                }}
-              >
-                All
-              </button>
-              {categories.map((category) => (
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {categories.length > 0 && (
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                 <button
-                  key={category}
-                  onClick={() => setCategoryFilter(category)}
+                  onClick={() => setCategoryFilter("all")}
                   className={
-                    categoryFilter === category
-                      ? "btn btn-secondary"
-                      : "btn-ghost"
+                    categoryFilter === "all" ? "btn btn-secondary" : "btn-ghost"
                   }
                   style={{
                     padding: "6px 14px",
@@ -279,11 +335,66 @@ export default function Products() {
                     borderRadius: "var(--radius-full)",
                   }}
                 >
-                  {category}
+                  All
                 </button>
-              ))}
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setCategoryFilter(category)}
+                    className={
+                      categoryFilter === category
+                        ? "btn btn-secondary"
+                        : "btn-ghost"
+                    }
+                    style={{
+                      padding: "6px 14px",
+                      fontSize: "0.85rem",
+                      borderRadius: "var(--radius-full)",
+                    }}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <select
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value as SortField)}
+                className="input-field"
+                style={{ width: "auto", padding: "8px 14px", fontSize: "0.85rem" }}
+              >
+                <option value="none">Sort by</option>
+                {(Object.keys(sortFieldLabels) as (keyof typeof sortFieldLabels)[]).map(
+                  (field) => (
+                    <option key={field} value={field}>
+                      {sortFieldLabels[field]}
+                    </option>
+                  ),
+                )}
+              </select>
+              <IconButton
+                icon={
+                  sortDirection === "asc" ? (
+                    <ArrowUp size={16} />
+                  ) : (
+                    <ArrowDown size={16} />
+                  )
+                }
+                tooltip={
+                  sortField === "none"
+                    ? "Pick a field to sort"
+                    : sortDirection === "asc"
+                      ? "Ascending — click for descending"
+                      : "Descending — click for ascending"
+                }
+                disabled={sortField === "none"}
+                onClick={() =>
+                  setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
+                }
+              />
             </div>
-          )}
+          </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -344,7 +455,7 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => (
+                {sortedProducts.map((product) => (
                   <tr
                     key={product.id}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
