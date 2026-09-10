@@ -8,6 +8,7 @@ import {
   LogOut,
   Percent,
   Bell,
+  BarChart3,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
@@ -26,6 +27,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { icon: Package, label: "Products", path: "/products" },
     { icon: Boxes, label: "Inventory", path: "/inventory" },
     { icon: ShoppingCart, label: "Orders", path: "/orders" },
+    { icon: BarChart3, label: "Sales Reports", path: "/sales-reports" },
     { icon: Percent, label: "Coupons", path: "/coupons" },
     { icon: Bell, label: "Launch Interests", path: "/launch-interests" },
     { icon: Users, label: "Customers", path: "/customers" },

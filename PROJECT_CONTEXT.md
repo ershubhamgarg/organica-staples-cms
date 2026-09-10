@@ -78,6 +78,7 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 8. **Customers:** Aggregated customer list (name, email, phone, order count, total spent) derived from order history.
 9. **Cancel Order + Refund:** Cancel an order, auto-cancel its Shiprocket shipment, and issue a full or partial Razorpay refund, all in one action with a required reason — see `api/orders/cancel.ts`.
 10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link — see `api/orders/sync-shipping.ts`.
+11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
 
 ## Environment Setup
 Required variables in `.env` (client-side, Vite-exposed):
@@ -219,6 +220,56 @@ on storage.objects for delete
 to authenticated
 using (bucket_id = 'products');
 ```
+
+### Sales Reports (`src/pages/SalesReports.tsx`)
+
+Purely client-side — reuses the same `orders` array already loaded into `useOrderStore` by
+`Layout.tsx` on app mount (no new API endpoint or Supabase query). The actual date filtering,
+aggregation (revenue/discount/profit/refunds/items-sold/weight/payment-method/status/top-products),
+and day-or-week-or-month grouping logic lives in `src/utils/salesReport.ts`, kept separate from
+the page component so it's independently reasoned about/testable. Cancelled orders are excluded
+from every revenue/profit figure (matching `statsStore.ts`'s existing Dashboard convention) but
+still counted/shown separately, since "how much did we sell" and "how many orders came in" are
+different questions.
+
+Two export formats:
+- **CSV** (`ordersToCSV`/`downloadCSV` in `salesReport.ts`) — one row per order, generated
+  synchronously client-side, no dependency. Prefixed with a UTF-8 BOM so Excel renders the ₹
+  symbol and non-ASCII customer names correctly instead of mangling them.
+- **PDF** (`src/utils/salesReportPdf.ts`) — deliberately scoped to **tax-relevant figures only**
+  (order counts for context, the GST/Tax Summary, HSN-wise summary, state-wise/place-of-supply
+  summary, and a per-order tax table: taxable value, CGST/SGST/IGST, invoice value, place of
+  supply) since this PDF is meant to go straight to a CA for GST/ITR filing — no profit/loss,
+  discount, payment-method, top-product, or period-trend figures, which stay in the on-screen
+  report and the CSV instead. Built with `jspdf`/`jspdf-autotable`. This is a genuinely new,
+  separate concern from the storefront-driven GST invoice PDFs documented below — those are
+  per-order legal documents generated once at order creation and simply downloaded here; this is
+  an ad-hoc, admin-only tax report generated on-demand for an arbitrary date range, which has no
+  equivalent "already generated" artifact to fetch. **Lazy-loaded via dynamic `import()`** on the
+  Export PDF click rather than a top-level import — jsPDF pulls in ~450KB (plus optional
+  `html2canvas`/`dompurify` chunks for features this report doesn't use) that no other page in
+  the app needs, so eagerly importing it inflated the main bundle for every route. Confirmed via
+  a build-output comparison before/after. jsPDF's built-in fonts have no glyph for ₹ (renders as
+  a missing-character box), so the PDF itself uses "Rs." instead — the CSV keeps the real ₹
+  symbol since spreadsheets don't have that font limitation.
+
+**GST/tax breakdown (`src/utils/gst.ts`)**: added so a CA has what's needed to file returns
+directly from this report. Deliberately mirrors the storefront's `lib/invoice.tsx` GST math
+line-for-line (`SELLER` constants including GSTIN, the `STATE_CODES` table, `isIntraState`,
+and the GST-inclusive-price split `taxableValue = amount / 1.05`) rather than inventing a
+second, potentially-diverging implementation — the numbers here must always reconcile with the
+numbers on the actual tax invoices the storefront generates for the same orders. HSN codes come
+from `useProductStore`'s already-loaded `products` list (each item's `id` is looked up against
+`product.hsn_code`), so `SalesReports.tsx` lazily fetches products if that store is still empty,
+the same pattern `Header.tsx` uses for its global search. Provides, per the selected date range:
+total taxable value (turnover), CGST/SGST/IGST/total tax, an HSN-wise summary table (shipping/
+convenience/COD fees are grouped under a synthetic "Charges" HSN row, matching the invoice
+generator's treatment of them as incidental charges under Sec. 15(2)(c)), and a state-wise
+(place-of-supply) breakdown — all surfaced in the page UI, the CSV (extra per-order columns:
+HSN codes, taxable value, CGST/SGST/IGST, place of supply, supply type), and the PDF. Also added
+"This Financial Year"/"Last Financial Year" (April–March) date presets alongside the calendar-
+based ones, since that's the range a CA actually asks for at filing time, not "This Year".
+Like the rest of this report, cancelled orders are excluded from turnover/tax figures.
 
 ### Invoice download (`api/orders/invoice.ts`)
 
