@@ -446,6 +446,26 @@ condition to its Profit/Loss column's gate.
   pointer`). The Order ID/email `CopyButton`s inside each row already call `stopPropagation()`
   (see `CopyButton.tsx`), so copying a value from within a row doesn't also trigger navigation.
 
+**Orders list sort** (`Orders.tsx`): replicates the exact sort pattern already established in
+`Products.tsx` — a `SortField` union (`"none" | "date" | "customer" | "total" | "weight" |
+"status" | "profitLoss"`) with a `"Sort by"` `<select>` + an `IconButton` (`ArrowUp`/`ArrowDown`)
+toggling `SortDirection`, disabled while no field is picked, sitting above the table inside the
+existing `Card`. `compareOrders(a, b, field)` drives a `useMemo`-derived `sortedOrders` array
+(`[...orders].sort((a,b) => compareOrders(a,b,field) * (direction==="asc"?1:-1))`), used in place
+of `orders` for both the row map and the empty-state length check. Field comparators: `date` on
+`created_at` timestamps, `customer` on `delivery_address.name` (locale-aware), `total` on
+`total_amount`, `weight` via `getOrderGrossWeightKg(items)`, `profitLoss` on `profit_loss`, and
+`status` on a purpose-built `STATUS_RANK` map (in `Orders.tsx`, not `shippingStatus.ts` — it's a
+sort concern, not a display one) keyed by `getUnifiedOrderStatus(order).label.toLowerCase()`:
+`cancelled` (0) → `local delivery` (1) → `pending`/`processing` (2-3) → `created` (4) →
+`awb assigned` (5) → `in transit` (6) → `out for delivery` (7) → `delivered` (8), so sorting by
+status reads as "how far along the shipment is" rather than alphabetically; any unrecognized
+label falls back to rank 99 then alphabetical order as a tiebreak, so the sort never throws or
+silently drops rows if a new status string shows up later. Verified with a standalone Node script
+sorting representative orders (cancelled/local/out-for-delivery/delivered mix) both ascending and
+descending across all five fields before considering this done, in addition to `tsc`/`eslint`/
+`build`.
+
 **Delivery Address copy bug (`OrderDetails.tsx`)**: the address `InfoRow` had no `copyValue` at
 all — the only copy affordance near "Delivery Address" was the card header's `CopyButton`, which
 copies name+phone+email+address *together*, sitting right next to the section title where a
