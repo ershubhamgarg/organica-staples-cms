@@ -415,8 +415,48 @@ courier hand-off step to pass through), always including the order's current sta
 fallback option even if it falls outside that set so the dropdown never renders blank; and the
 "Shipping & Logistics" card replaces the courier/AWB/tracking UI and its "Update" button (nothing
 to sync) with a plain explanatory note. `Orders.tsx` applies the same `!isLocalOrder(order)`
-condition to its Profit/Loss column's gate, and adds a small "Local" badge next to the status
-badge in the list so these orders are identifiable without opening each one.
+condition to its Profit/Loss column's gate.
+
+**Orders list (`Orders.tsx`) UI pass**:
+- A single **Status** column (not two — a separate "Shipping" column was tried first, then
+  merged back per feedback that two side-by-side status badges per row was more confusing than
+  helpful) shows whichever of the order's two status concepts is more specific right now, via
+  `getUnifiedOrderStatus()` in `src/utils/shippingStatus.ts`: `cancelled` always wins outright
+  (overrides shipping progress entirely); local orders always show "Local Delivery"; otherwise a
+  real Shiprocket-driven `shipping_status` (created/awb_assigned/in_transit/out_for_delivery/
+  delivered/sync_failed) is preferred over the coarser `status`, falling back to `status` only
+  while there's nothing more specific yet (pending/processing, before a shipment exists). Colors
+  come from the same severity-gradient helpers (`getShippingStatusColor`/
+  `formatShippingStatusLabel`) that `OrderDetails.tsx`'s header badge uses (which replaced its own
+  near-duplicate `getShippingBadgeColor`, which additionally didn't handle
+  `pending`/`not_configured` at all) — `danger` (cancelled/sync failed) → `warning` (not yet
+  moving: not_configured/pending/created) → `info` (in motion: awb_assigned/in_transit) →
+  `success` (arrived or about to: out_for_delivery/delivered). The latter two intentionally share
+  a color since both are positive outcomes, staying distinguishable by label text — this is
+  exactly the pair the `normalizeTrackingStatus` substring-ordering bug above used to conflate, so
+  keeping them adjacent-but-distinct here is deliberate, not an oversight. Verified against real
+  production orders (including the two corrected for that bug) that the unified label/color make
+  sense in every case rather than just trusting the logic by inspection.
+- Local orders get a new **`.badge-local`** variant (light purple) instead of reusing `badge-info`
+  — `badge-info` is now claimed by the severity scale above (`awb_assigned`/`in_transit`), and
+  local delivery isn't a point on that scale at all, so sharing blue with it would misleadingly
+  imply it's a courier-based state. Same class used on `OrderDetails.tsx`'s header badge.
+- The row-level "view" affordance (an `Eye` icon in its own Actions column) is gone — clicking
+  anywhere on a row navigates to that order's detail page (`onClick` on the `<tr>`, `cursor:
+  pointer`). The Order ID/email `CopyButton`s inside each row already call `stopPropagation()`
+  (see `CopyButton.tsx`), so copying a value from within a row doesn't also trigger navigation.
+
+**Delivery Address copy bug (`OrderDetails.tsx`)**: the address `InfoRow` had no `copyValue` at
+all — the only copy affordance near "Delivery Address" was the card header's `CopyButton`, which
+copies name+phone+email+address *together*, sitting right next to the section title where a
+"copy the address" button would naturally be expected. Added a proper `copyValue` (just the
+street/city/state/zip/country) to the Address row itself; the header button is unchanged and
+still copies the full block. While there, fixed a related alignment issue in the shared
+`InfoRow`/`.info-row-stacked` component: `.info-row-value`'s `align-items: center` vertically
+centered a trailing `CopyButton` against the *entire* multi-line address block, making it float
+next to the middle line rather than anchor to the top — changed to `align-items: flex-start` for
+stacked rows (safe for every other `stacked` `InfoRow` use too, since single-line values look
+identical under either alignment).
 
 ### Invoice download (`api/orders/invoice.ts`)
 

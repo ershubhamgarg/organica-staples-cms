@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, PackageSearch, Weight, AlertTriangle } from "lucide-react";
+import { PackageSearch, Weight, AlertTriangle } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
@@ -11,6 +11,7 @@ import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { isLocalOrder } from "../utils/localOrder";
+import { getUnifiedOrderStatus } from "../utils/shippingStatus";
 
 export default function Orders() {
   const { orders, isLoading, error, fetchOrders } = useOrderStore();
@@ -19,24 +20,6 @@ export default function Orders() {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "delivered":
-      case "approved":
-        return "success";
-      case "pending":
-      case "processing":
-        return "warning";
-      case "shipped":
-        return "info";
-      case "cancelled":
-      case "rejected":
-        return "danger";
-      default:
-        return "secondary";
-    }
-  };
 
   return (
     <div className="animate-fade-in">
@@ -82,15 +65,6 @@ export default function Orders() {
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>
                     Profit/Loss
                   </th>
-                  <th
-                    style={{
-                      padding: "12px 16px",
-                      fontWeight: 500,
-                      textAlign: "right",
-                    }}
-                  >
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -98,7 +72,11 @@ export default function Orders() {
                   orders.map((order) => (
                     <tr
                       key={order.id}
-                      style={{ borderBottom: "1px solid var(--border-color)" }}
+                      onClick={() => navigate(`/orders/${order.id}`)}
+                      style={{
+                        borderBottom: "1px solid var(--border-color)",
+                        cursor: "pointer",
+                      }}
                     >
                       <td
                         style={{
@@ -163,27 +141,21 @@ export default function Orders() {
                         </span>
                       </td>
                       <td style={{ padding: "16px" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "6px",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span
-                            className={`badge badge-${getStatusColor(order.status)}`}
-                          >
-                            {order.status}
-                          </span>
-                          {isLocalOrder(order) && (
+                        {(() => {
+                          const unified = getUnifiedOrderStatus(order);
+                          return (
                             <span
-                              className="badge badge-info"
-                              data-tooltip="Hand-delivered locally — no courier or AWB involved"
+                              className={`badge badge-${unified.color}`}
+                              data-tooltip={
+                                unified.color === "local"
+                                  ? "Hand-delivered locally — no courier or AWB involved"
+                                  : undefined
+                              }
                             >
-                              Local
+                              {unified.label}
                             </span>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: "16px" }}>
                         {!order.shiprocket_awb_code &&
@@ -218,24 +190,11 @@ export default function Orders() {
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: "16px", textAlign: "right" }}>
-                        <button
-                          className="btn-ghost"
-                          onClick={() => navigate(`/orders/${order.id}`)}
-                          style={{
-                            padding: "6px",
-                            borderRadius: "6px",
-                            color: "var(--accent-primary)",
-                          }}
-                        >
-                          <Eye size={18} />
-                        </button>
-                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={7}>
                       <EmptyState icon={PackageSearch} message="No orders found." />
                     </td>
                   </tr>

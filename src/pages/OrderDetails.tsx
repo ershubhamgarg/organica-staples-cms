@@ -30,6 +30,7 @@ import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { formatDateTime } from "../utils/date";
 import { displayNumber, parseNumberInput } from "../utils/number";
 import { isLocalOrder } from "../utils/localOrder";
+import { getShippingStatusColor, formatShippingStatusLabel } from "../utils/shippingStatus";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -360,25 +361,6 @@ export default function OrderDetails() {
     return <Spinner size={48} padding="4rem" />;
   }
 
-  const getShippingBadgeColor = (status: string | null | undefined) => {
-    if (!status) return "secondary";
-    switch (status.toLowerCase()) {
-      case "delivered":
-        return "success";
-      case "in_transit":
-      case "out_for_delivery":
-        return "info";
-      case "cancelled":
-      case "sync_failed":
-        return "danger";
-      case "awb_assigned":
-      case "created":
-        return "warning";
-      default:
-        return "secondary";
-    }
-  };
-
   const getRefundBadgeColor = (status: string | null | undefined) => {
     if (!status) return "secondary";
     switch (status.toLowerCase()) {
@@ -449,7 +431,7 @@ export default function OrderDetails() {
             </span>
             {isLocal ? (
               <span
-                className="badge badge-info"
+                className="badge badge-local"
                 style={{ fontSize: "0.75rem", gap: "5px" }}
                 data-tooltip="Hand-delivered locally — no courier or AWB involved"
               >
@@ -459,10 +441,10 @@ export default function OrderDetails() {
             ) : (
               order.shipping_status && (
                 <span
-                  className={`badge badge-${getShippingBadgeColor(order.shipping_status)}`}
+                  className={`badge badge-${getShippingStatusColor(order.shipping_status)}`}
                   style={{ fontSize: "0.75rem" }}
                 >
-                  Shipping: {order.shipping_status.replace("_", " ")}
+                  Shipping: {formatShippingStatusLabel(order.shipping_status)}
                 </span>
               )
             )}
@@ -996,6 +978,19 @@ export default function OrderDetails() {
               <InfoRow
                 label="Address"
                 stacked
+                copyValue={[
+                  order.delivery_address.address,
+                  [
+                    order.delivery_address.city,
+                    order.delivery_address.state,
+                    order.delivery_address.zipCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
+                  order.delivery_address.country,
+                ]
+                  .filter(Boolean)
+                  .join("\n")}
                 value={
                   <>
                     {order.delivery_address.address}

@@ -322,6 +322,10 @@ body {
 .info-row.info-row-stacked .info-row-value {
   justify-content: flex-start;
   text-align: left;
+  /* A stacked value can be several lines (e.g. a multi-line address) with a
+     copy icon trailing it — centering would float that icon next to the
+     middle line instead of visually anchoring it to the block. */
+  align-items: flex-start;
 }
 
 /* Header global-search live results dropdown */
@@ -619,6 +623,10 @@ tbody tr:hover {
 .badge-danger { background: #F6DEDC; color: #8C231D; }
 .badge-info { background: #DDE8F0; color: #285C82; }
 .badge-secondary { background: #ECE7DA; color: #6B6353; }
+/* Local (hand-delivered) orders — deliberately outside the red/amber/blue/
+   green courier-severity scale, since "local" isn't a point on that scale
+   at all, it's a different delivery method entirely. */
+.badge-local { background: #E5DEF5; color: #5B3E96; }
 
 /* Login */
 .login-mobile-mark {
