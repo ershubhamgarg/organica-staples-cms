@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   Weight,
   Download,
+  IndianRupee,
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
 import { supabase } from "../utils/supabase";
@@ -44,6 +45,8 @@ export default function OrderDetails() {
   const cancelOrderWithRefund = useOrderStore(
     (state) => state.cancelOrderWithRefund,
   );
+  const refundOrder = useOrderStore((state) => state.refundOrder);
+  const checkRefundStatus = useOrderStore((state) => state.checkRefundStatus);
   const syncShippingDetails = useOrderStore(
     (state) => state.syncShippingDetails,
   );
@@ -63,6 +66,12 @@ export default function OrderDetails() {
   const [isSyncingShipping, setIsSyncingShipping] = useState(false);
   const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
   const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [standaloneRefundMode, setStandaloneRefundMode] =
+    useState<Exclude<RefundMode, "none">>("full");
+  const [standaloneRefundAmount, setStandaloneRefundAmount] = useState(0);
+  const [standaloneRefundReason, setStandaloneRefundReason] = useState("");
+  const [isRefunding, setIsRefunding] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -97,12 +106,44 @@ export default function OrderDetails() {
             if (!cancelled) setIsRefreshingTracking(false);
           });
       }
+
+      // A refund issued directly on the Razorpay dashboard (rather than
+      // through this app's Cancel Order / Issue Refund actions) would
+      // otherwise never be reflected here — reconcile against Razorpay's
+      // own refund record every time the page loads. Merges only the
+      // refund-related fields (not a full setOrder(result.order)) so this
+      // doesn't race with the shipping-tracking refresh above and
+      // momentarily revert whichever one lands second.
+      if (fetchedOrder && canRefundOrder(fetchedOrder)) {
+        checkRefundStatus(id)
+          .then((result) => {
+            if (cancelled || !result.refund.changed) return;
+            setOrder((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    razorpay_refund_id: result.order.razorpay_refund_id,
+                    refund_status: result.order.refund_status,
+                    refund_amount: result.order.refund_amount,
+                    refunded_at: result.order.refunded_at,
+                    refund_checked_at: result.order.refund_checked_at,
+                  }
+                : prev,
+            );
+            toast.info(
+              `Refund status updated from Razorpay — ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status ?? "recorded"}.`,
+            );
+          })
+          .catch((err) => {
+            console.error("Failed to check refund status:", err);
+          });
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [id, getOrderById, syncShippingDetails]);
+  }, [id, getOrderById, syncShippingDetails, checkRefundStatus]);
 
   const profit = order?.profit_loss || 0;
   const profitMargin =
@@ -136,6 +177,17 @@ export default function OrderDetails() {
   // (zero shipping component, correctly, rather than an unresolved estimate).
   const awbPending =
     !order?.shiprocket_awb_code && order?.status !== "cancelled" && !isLocal;
+
+  // Independent of order.status — unlike the refund bundled into cancellation
+  // (which refuses to run once an order is already cancelled), a standalone
+  // refund should be available for a delivered order (a return), a retry
+  // after a failed refund, or a second partial refund, as long as there's
+  // still an unrefunded balance on a Razorpay-paid order.
+  const refundableBalance = order
+    ? order.total_amount - (order.refund_amount || 0)
+    : 0;
+  const canIssueStandaloneRefund =
+    order != null && canRefundOrder(order) && refundableBalance > 0.005;
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!id || !order) return;
@@ -241,6 +293,52 @@ export default function OrderDetails() {
       );
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleOpenRefundModal = () => {
+    setStandaloneRefundMode("full");
+    setStandaloneRefundAmount(refundableBalance);
+    setStandaloneRefundReason("");
+    setShowRefundModal(true);
+  };
+
+  const handleConfirmRefund = async () => {
+    if (!id || !standaloneRefundReason.trim()) return;
+
+    if (
+      standaloneRefundMode === "partial" &&
+      (!(standaloneRefundAmount > 0) ||
+        standaloneRefundAmount > refundableBalance)
+    ) {
+      toast.error(
+        `Refund amount must be greater than 0 and no more than ₹${formatCurrency(refundableBalance)}.`,
+      );
+      return;
+    }
+
+    try {
+      setIsRefunding(true);
+      const result = await refundOrder(id, {
+        reason: standaloneRefundReason,
+        mode: standaloneRefundMode,
+        amount:
+          standaloneRefundMode === "partial"
+            ? standaloneRefundAmount
+            : undefined,
+      });
+
+      setOrder(result.order);
+      setShowRefundModal(false);
+      setStandaloneRefundReason("");
+      toast.success(
+        `Refund of ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status}.`,
+      );
+    } catch (err) {
+      console.error("Failed to refund order:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to refund order.");
+    } finally {
+      setIsRefunding(false);
     }
   };
 
@@ -1118,7 +1216,7 @@ export default function OrderDetails() {
                 )}
               </div>
 
-              {order.refund_status && (
+              {(order.refund_status || canRefundOrder(order)) && (
                 <div className="card-subsection">
                   <div
                     style={{
@@ -1129,11 +1227,27 @@ export default function OrderDetails() {
                     }}
                   >
                     <span className="eyebrow">Refund</span>
-                    <span
-                      className={`badge badge-${getRefundBadgeColor(order.refund_status)}`}
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: "8px" }}
                     >
-                      {order.refund_status.replace(/_/g, " ")}
-                    </span>
+                      {order.refund_status && (
+                        <span
+                          className={`badge badge-${getRefundBadgeColor(order.refund_status)}`}
+                        >
+                          {order.refund_status.replace(/_/g, " ")}
+                        </span>
+                      )}
+                      {canIssueStandaloneRefund && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<IndianRupee size={14} />}
+                          onClick={handleOpenRefundModal}
+                        >
+                          Issue Refund
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {order.refund_amount != null && (
                     <InfoRow
@@ -1155,6 +1269,17 @@ export default function OrderDetails() {
                       label="Refunded At"
                       value={formatDateTime(order.refunded_at)}
                     />
+                  )}
+                  {order.refund_status && !canIssueStandaloneRefund && (
+                    <div
+                      style={{
+                        fontSize: "0.8rem",
+                        color: "var(--text-secondary)",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Fully refunded.
+                    </div>
                   )}
                 </div>
               )}
@@ -1436,6 +1561,96 @@ export default function OrderDetails() {
               onClick={handleConfirmCancel}
             >
               Confirm Cancellation
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Refund Modal */}
+      {showRefundModal && order && (
+        <Modal
+          onClose={() => setShowRefundModal(false)}
+          title="Issue Refund"
+          icon={<IndianRupee size={20} />}
+          maxWidth="440px"
+          closeDisabled={isRefunding}
+        >
+          <p
+            style={{
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
+            }}
+          >
+            Refunds this order's Razorpay payment directly — the order's
+            status is left as-is. Up to ₹{formatCurrency(refundableBalance)}{" "}
+            can still be refunded.
+          </p>
+
+          <div className="form-group">
+            <label>Refund Reason</label>
+            <textarea
+              autoFocus
+              value={standaloneRefundReason}
+              onChange={(e) => setStandaloneRefundReason(e.target.value)}
+              placeholder="e.g. Damaged item returned, partial order shortfall"
+              style={{ minHeight: "80px" }}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginTop: "1rem" }}>
+            <label>Refund Amount</label>
+            <select
+              value={standaloneRefundMode}
+              onChange={(e) =>
+                setStandaloneRefundMode(
+                  e.target.value as Exclude<RefundMode, "none">,
+                )
+              }
+            >
+              <option value="full">
+                Full remaining balance (₹{formatCurrency(refundableBalance)})
+              </option>
+              <option value="partial">Partial refund</option>
+            </select>
+
+            {standaloneRefundMode === "partial" && (
+              <input
+                type="number"
+                min={1}
+                max={refundableBalance}
+                value={displayNumber(standaloneRefundAmount)}
+                onChange={(e) =>
+                  setStandaloneRefundAmount(parseNumberInput(e.target.value))
+                }
+                placeholder="Refund amount (₹)"
+                style={{ marginTop: "0.75rem" }}
+              />
+            )}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => setShowRefundModal(false)}
+              disabled={isRefunding}
+            >
+              Back
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!standaloneRefundReason.trim()}
+              loading={isRefunding}
+              onClick={handleConfirmRefund}
+            >
+              Confirm Refund
             </Button>
           </div>
         </Modal>

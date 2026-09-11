@@ -1,8 +1,8 @@
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin";
+import { refundRazorpayPayment } from "../_lib/razorpay";
 
 export const config = { runtime: "edge" };
 
-const RAZORPAY_API_BASE = "https://api.razorpay.com/v1";
 const SHIPROCKET_API_BASE = "https://apiv2.shiprocket.in/v1/external";
 
 type RefundMode = "full" | "partial" | "none";
@@ -97,83 +97,6 @@ async function cancelShiprocketOrder(
   }
 }
 
-async function refundRazorpayPayment(
-  paymentId: string,
-  reason: string,
-  mode: RefundMode,
-  amountRupees: number | undefined,
-): Promise<
-  StepResult & { status: string | null; amount: number | null; refundId: string | null }
-> {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (!keyId || !keySecret) {
-    return {
-      attempted: true,
-      success: false,
-      message: "Razorpay credentials are not configured.",
-      status: null,
-      amount: null,
-      refundId: null,
-    };
-  }
-
-  try {
-    const body: Record<string, unknown> = {
-      notes: { reason, cancelled_by: "admin_cms" },
-    };
-    if (mode === "partial" && typeof amountRupees === "number") {
-      body.amount = Math.round(amountRupees * 100);
-    }
-
-    const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
-    const response = await fetch(
-      `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}/refund`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: authHeader,
-        },
-        body: JSON.stringify(body),
-      },
-    );
-    const result = (await response.json().catch(() => ({}))) as {
-      id?: string;
-      amount?: number;
-      status?: string;
-      error?: { description?: string };
-    };
-
-    if (!response.ok) {
-      throw new Error(
-        result.error?.description ?? `Razorpay refund failed (${response.status}).`,
-      );
-    }
-
-    const status = result.status === "processed" ? "processed" : "pending";
-
-    return {
-      attempted: true,
-      success: true,
-      message: `Refund ${status}.`,
-      status,
-      amount: typeof result.amount === "number" ? result.amount / 100 : null,
-      refundId: result.id ?? null,
-    };
-  } catch (error) {
-    return {
-      attempted: true,
-      success: false,
-      message: error instanceof Error ? error.message : "Razorpay refund failed.",
-      status: "failed",
-      amount: null,
-      refundId: null,
-    };
-  }
-}
-
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== "POST") {
     return json({ error: "Method not allowed." }, 405);
@@ -226,7 +149,7 @@ export default async function handler(request: Request): Promise<Response> {
   const { data: order, error: fetchError } = await supabaseAdmin
     .from("orders")
     .select(
-      "id, status, total_amount, payment_method, payment_details, shiprocket_order_id",
+      "id, status, total_amount, payment_method, payment_details, shiprocket_order_id, refund_amount",
     )
     .eq("id", orderId)
     .single();
@@ -239,15 +162,18 @@ export default async function handler(request: Request): Promise<Response> {
     return json({ error: "This order is already cancelled." }, 400);
   }
 
+  const alreadyRefunded = order.refund_amount ?? 0;
+  const refundableBalance = order.total_amount - alreadyRefunded;
+
   if (refundMode === "partial") {
     if (
       typeof refundAmountInput !== "number" ||
       !(refundAmountInput > 0) ||
-      refundAmountInput > order.total_amount
+      refundAmountInput > refundableBalance
     ) {
       return json(
         {
-          error: `Refund amount must be greater than 0 and no more than ₹${order.total_amount.toFixed(2)}.`,
+          error: `Refund amount must be greater than 0 and no more than ₹${refundableBalance.toFixed(2)}.`,
         },
         400,
       );
@@ -268,8 +194,8 @@ export default async function handler(request: Request): Promise<Response> {
     ? await refundRazorpayPayment(
         paymentDetails!.provider_payment_id!,
         reason,
-        refundMode,
-        refundAmountInput,
+        refundMode === "partial" ? refundAmountInput : undefined,
+        { cancelled_by: "admin_cms" },
       )
     : {
         attempted: false,
@@ -290,8 +216,13 @@ export default async function handler(request: Request): Promise<Response> {
   if (refund.attempted) {
     updates.razorpay_refund_id = refund.refundId;
     updates.refund_status = refund.status;
-    updates.refund_amount = refund.amount;
-    updates.refunded_at = refund.success ? new Date().toISOString() : null;
+    // Cumulative across all refunds ever issued for this order (a standalone
+    // partial refund via api/orders/refund.ts may already have refunded some
+    // of it before this cancellation) — never just the amount of this call.
+    if (refund.success) {
+      updates.refund_amount = alreadyRefunded + (refund.amount ?? 0);
+      updates.refunded_at = new Date().toISOString();
+    }
     updates.refund_checked_at = new Date().toISOString();
   }
 

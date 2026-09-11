@@ -5,13 +5,20 @@ import { isLocalOrder } from "./localOrder";
 // given shipping_status always gets the same color/label wherever it's
 // shown. Colors follow a severity gradient rather than a literal per-status
 // palette (there are more distinct statuses than the app's 5 badge colors):
-// danger (blocked/cancelled) > warning (not yet moving) > info (in motion)
-// > success (arrived or about to).
+// danger (a real sync failure) > warning (not yet moving, or a cancelled
+// shipment that needs a new AWB) > info (in motion) > success (arrived or
+// about to). "danger" for the plain word "Cancelled" is reserved for the
+// order itself (getUnifiedOrderStatus) — a cancelled *shipment* is warning.
 export function getShippingStatusColor(status: string | null | undefined): string {
   switch (status?.toLowerCase()) {
-    case "cancelled":
     case "sync_failed":
       return "danger";
+    // A cancelled shipment (RTO, failed pickup, a manual cancel on
+    // Shiprocket's own dashboard) is not a dead end for the order — it
+    // typically just needs a new AWB — so it gets "warning", not "danger".
+    // "danger" is reserved for the order itself being cancelled (see
+    // getUnifiedOrderStatus below), so the two never share a color.
+    case "cancelled":
     case "not_configured":
     case "pending":
     case "created":
@@ -29,6 +36,11 @@ export function getShippingStatusColor(status: string | null | undefined): strin
 
 export function formatShippingStatusLabel(status: string | null | undefined): string {
   if (!status) return "Not Set";
+  // Worded as "Shipment Cancelled" rather than a bare "Cancelled" so it's
+  // never mistaken for the order itself being cancelled (see
+  // getUnifiedOrderStatus below, which reserves the plain "Cancelled" label
+  // for that) — the shipment/AWB was voided, but the order is still active.
+  if (status.toLowerCase() === "cancelled") return "Shipment Cancelled";
   return status.replace(/_/g, " ");
 }
 

@@ -45,14 +45,15 @@ const sortFieldLabels: Record<Exclude<SortField, "none">, string> = {
 // and anything unrecognized falls back to alphabetical via the label.
 const STATUS_RANK: Record<string, number> = {
   cancelled: 0,
-  "local delivery": 1,
-  pending: 2,
-  processing: 3,
-  created: 4,
-  "awb assigned": 5,
-  "in transit": 6,
-  "out for delivery": 7,
-  delivered: 8,
+  "shipment cancelled": 1,
+  "local delivery": 2,
+  pending: 3,
+  processing: 4,
+  created: 5,
+  "awb assigned": 6,
+  "in transit": 7,
+  "out for delivery": 8,
+  delivered: 9,
 };
 
 function getStatusSortKey(order: Order): [number, string] {

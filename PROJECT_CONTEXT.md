@@ -77,6 +77,8 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 7. **Launch Interest Leads:** View "Launching Soon" waitlist signups and track follow-up emails.
 8. **Customers:** Aggregated customer list (name, email, phone, order count, total spent) derived from order history.
 9. **Cancel Order + Refund:** Cancel an order, auto-cancel its Shiprocket shipment, and issue a full or partial Razorpay refund, all in one action with a required reason — see `api/orders/cancel.ts`.
+9b. **Standalone Refund:** Issue a full or partial Razorpay refund from the order detail page without cancelling the order — for returns on a delivered order, retrying a failed refund, or a second partial refund. See below and `api/orders/refund.ts`.
+9c. **Refund Reconciliation:** Every time the order detail page loads, it silently re-checks Razorpay's own refund record for that payment and corrects the stored refund status/amount if a refund was issued directly on the Razorpay dashboard rather than through this app. See below and `api/orders/refund-status.ts`.
 10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link, and — once a courier is actually assigned — corrects the order's margin from Shiprocket's real freight charge. See below for details, and `api/orders/sync-shipping.ts`.
 11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
 
@@ -86,7 +88,7 @@ Required variables in `.env` (client-side, Vite-exposed):
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous/public key.
 
 ### Server-only variables (Vercel project settings, never in `.env`/client code)
-Required for `api/orders/cancel.ts` and `api/orders/sync-shipping.ts` (Vercel Edge Functions
+Required for `api/orders/cancel.ts`, `api/orders/refund.ts`, `api/orders/refund-status.ts`, and `api/orders/sync-shipping.ts` (Vercel Edge Functions
 under `api/`). Add these in the CMS's own Vercel project — copy the values from the
 storefront's Vercel project, where they already exist:
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`: for issuing refunds.
@@ -465,6 +467,147 @@ silently drops rows if a new status string shows up later. Verified with a stand
 sorting representative orders (cancelled/local/out-for-delivery/delivered mix) both ascending and
 descending across all five fields before considering this done, in addition to `tsc`/`eslint`/
 `build`.
+
+### Standalone Refund (`api/orders/refund.ts`)
+
+Before this, the **only** way to refund a Razorpay payment was `api/orders/cancel.ts`'s bundled
+refund — and that endpoint refuses to run at all once `order.status === "cancelled"`, so there
+was no way to: refund a **delivered** order (a return/exchange, without touching its fulfillment
+status), retry a refund that failed the first time (Razorpay outage, wrong credentials, etc.), or
+issue a **second** partial refund after an earlier one. `api/orders/refund.ts` is a new, separate
+Edge endpoint that refunds independent of `order.status` — it only checks that the order was paid
+via Razorpay (`payment_method === "razorpay"` and `payment_details.provider_payment_id` present)
+and that it still has an unrefunded balance.
+
+**Shared Razorpay call extracted to `api/_lib/razorpay.ts`** (`refundRazorpayPayment`) — both
+`cancel.ts` and `refund.ts` now call this instead of `cancel.ts` having its own private copy (the
+original `mode`/`amountRupees` coupling was dropped in favor of just `amountRupees: number |
+undefined`, since "full" refund is simply "no amount" to the Razorpay API — it refunds whatever's
+still outstanding on the payment automatically). `cancel.ts`'s call site was updated in place
+(`refundMode === "partial" ? refundAmountInput : undefined`), so its behavior is unchanged.
+
+**`refund_amount` is now cumulative, not last-call-only.** Previously `cancel.ts` overwrote
+`orders.refund_amount` with just that one refund's amount — safe when a cancellation was the only
+place a refund could ever happen (exactly one refund per order, ever), but wrong the moment a
+second refund becomes possible: a partial standalone refund followed by cancelling the rest would
+otherwise make the second write erase the first. Both endpoints now read the order's existing
+`refund_amount` first and write `alreadyRefunded + thisRefund.amount`. `refundableBalance =
+order.total_amount - (order.refund_amount ?? 0)` is the single source of truth for "how much is
+left to refund" in both endpoints and in the UI — `cancel.ts`'s partial-refund validation was
+changed to cap against this balance (previously capped against `total_amount`, which would have
+let a partial cancel-refund exceed what Razorpay still had available if a standalone refund had
+already taken some of it). Razorpay itself is also always keyed on `provider_payment_id`, so
+`razorpay_refund_id`/`refund_status` on the order only ever reflect the **most recent** refund
+call, not a history of all of them — acceptable for a single-column schema; a full refund
+history/audit trail was judged out of scope for what was asked.
+
+Also fixed while touching this: `cancel.ts` used to unconditionally set `refunded_at = null` on
+*any* attempted-but-failed refund, which would have wiped out the timestamp of an earlier
+*successful* standalone refund on the same order. Now `refunded_at`/`refund_amount` are only
+written when `refund.success` is true; `refund_checked_at` (last-attempt timestamp, distinct from
+last-success) is still always stamped.
+
+**UI (`OrderDetails.tsx`)**: the Payment Information card's "Refund" subsection (previously only
+rendered once a `refund_status` already existed) now also renders — with an **"Issue Refund"**
+button — whenever `canRefundOrder(order)` is true and `refundableBalance > 0`, regardless of
+order status. Clicking it opens a dedicated "Issue Refund" modal (separate from the "Cancel
+Order" modal's bundled refund UI) with a required reason, a Full-remaining-balance/Partial
+choice, and the same partial-amount validation pattern as the cancel modal. Confirming calls the
+new `refundOrder` store action → `POST /api/orders/refund`, and merges the returned order back
+into local state (same pattern as `cancelOrderWithRefund`/`syncShippingDetails`). Once the
+balance reaches zero, the button disappears and a plain "Fully refunded." note shows instead.
+Deliberately **not** exercised end-to-end against the live Razorpay API during this session (the
+existing cancel-refund code path was already live-verified in an earlier session; this reuses its
+exact request shape) — issuing a real refund moves real money, so that verification is left to
+the user testing it against a real order in the admin UI, same as the "must be logged in to
+verify" limitation noted elsewhere for UI-only changes.
+
+### Reconciling out-of-band Razorpay refunds (`api/orders/refund-status.ts`)
+
+Both refund paths above (`cancel.ts`'s bundled refund and the standalone `refund.ts`) only ever
+update `orders.refund_status`/`refund_amount` when **this app** is the one issuing the refund —
+a refund initiated directly on the Razorpay dashboard (support staff working straight from
+Razorpay, bypassing the CMS entirely) was invisible here forever, since nothing ever re-checked
+Razorpay's own state afterward. Fixed by adding a reconciliation check that runs automatically
+every time `OrderDetails.tsx` loads (same "pull the latest the moment the page opens" pattern
+already used for Shiprocket tracking — see `awbCode && !isTerminal` in the mount effect).
+
+**`getPaymentRefundState(paymentId)`** (`api/_lib/razorpay.ts`) calls `GET
+/v1/payments/:id/refunds` — Razorpay's own authoritative list of every refund ever issued against
+that payment, regardless of where it came from — and sums every item's amount for the cumulative
+total (matching the cumulative `refund_amount` semantics established above), while taking
+`items[0]` (newest-first, same assumption the storefront's pre-existing `getRazorpayRefundStatus`
+in `lib/razorpay.ts` already relied on) for the single `refundId`/`status`/`refundedAt` fields
+the order record keeps. Verified the list endpoint's real response shape against a live payment
+(`pay_TX74W8ludGyKQW`) via a safe read-only GET using the storefront's Razorpay credentials (the
+CMS's own `.env.local` doesn't carry `RAZORPAY_KEY_ID`/`SECRET` — those are Vercel-only, per the
+Environment Setup section) — confirmed `{ count, entity, items: [] }` for a never-refunded
+payment; no order in this database has actually been refunded yet (this whole refund feature is
+new this session), so the "some refund exists" branch is unverified against real data, though it
+reuses the exact field names (`id`, `amount`, `status`, `created_at`) the already-working
+storefront code has relied on.
+
+**`api/orders/refund-status.ts`** — a new POST endpoint, `{ orderId }` → fetches the order,
+returns immediately (200, not an error — this is a silent background check, not a user action)
+if it wasn't paid via Razorpay, otherwise calls `getPaymentRefundState` and compares the result
+against what's stored (`refund_amount`, `refund_status`, `razorpay_refund_id`); if anything
+differs by more than a rounding cent, it overwrites the order's refund fields to match Razorpay's
+version of the truth and returns `changed: true`. A Razorpay-side failure here is swallowed (not
+surfaced as a page error), consistent with this being an invisible background reconciliation.
+
+**Wiring**: new `checkRefundStatus` store action (`orderStore.ts`) mirrors
+`cancelOrderWithRefund`/`refundOrder`'s `postToOrdersApi` pattern. In `OrderDetails.tsx`'s mount
+effect, if `canRefundOrder(fetchedOrder)`, it fires alongside (not instead of) the shipping sync.
+Deliberately merges only the five refund-related fields into local state via a functional
+`setOrder(prev => ({...prev, ...}))` rather than a full `setOrder(result.order)` replace — the
+shipping-tracking refresh in the same effect is an independent concurrent request, and a full
+replace from whichever response lands second would silently revert whatever the other one just
+wrote. When `changed` is true, a `toast.info` surfaces it (e.g. "Refund status updated from
+Razorpay — ₹500.00 processed.") so the admin actually notices a refund they didn't initiate
+here, rather than the balance just quietly changing underneath them.
+
+### Cancelled shipment ≠ cancelled order
+
+**Bug**: a shipment getting cancelled at Shiprocket's end (RTO, a failed pickup, or a manual
+cancel on Shiprocket's own dashboard — anything *other* than the CMS's own admin-initiated
+"Cancel Order" flow) was making the order itself look and behave cancelled, even though staff
+never cancelled it and the order still needs fulfilling (typically via a new AWB). Two distinct
+causes, both fixed:
+
+1. **The storefront was writing `orders.status = "cancelled"` whenever the tracked shipping
+   status normalized to `"cancelled"`** — in both `app/api/tracking-webhook/route.ts` (the
+   Shiprocket push webhook) and `app/api/shiprocket/track/route.ts` (the customer-facing "track
+   my order" poll). Both computed `orderStatus` from `shippingStatus` with `shippingStatus ===
+   "cancelled" ? "cancelled" : ...`, unconditionally. Fixed to `"processing"` instead, guarded so
+   an order already `"cancelled"` (a real admin cancellation) or `"delivered"` is left alone
+   rather than being reverted backwards — both routes' Supabase `select()` now also fetch
+   `status` so that guard has something to check. The CMS's own `api/orders/sync-shipping.ts`
+   never touched `order.status` on a cancelled-shipment tracking result at all (it only wrote
+   `shipping_status`), which is arguably why the underlying `orders.status` value was inconsistent
+   between orders — some cancelled-shipment orders had `status: "processing"` (never re-synced
+   from the storefront's side) and some had `status: "cancelled"` (touched by the storefront's
+   webhook/poll) even though nothing about the order was ever deliberately cancelled. Added the
+   same `"processing"` correction there too, with the identical cancelled/delivered guard, so all
+   three write paths now agree.
+2. **Even with `order.status` fixed, the Orders-list/OrderDetails *display* still read the same
+   word "Cancelled" for both cases** — `getUnifiedOrderStatus()` shows the order-level
+   `"Cancelled"` (danger, correctly reserved for a real cancellation) only when `order.status ===
+   "cancelled"`; otherwise it falls through to the Shiprocket-driven `shipping_status`, and
+   `formatShippingStatusLabel("cancelled")` used to just strip underscores, rendering the plain
+   word `"Cancelled"` — visually identical to the order-level badge, which is exactly what the bug
+   report described ("we show order being canceled ... but this is not the case"). Fixed in
+   `src/utils/shippingStatus.ts`: `formatShippingStatusLabel` now special-cases `"cancelled"` to
+   read **"Shipment Cancelled"**, and `getShippingStatusColor` moved it from `danger` to
+   `warning` (a cancelled shipment is recoverable — assign a new AWB — unlike `sync_failed`, which
+   stays `danger`, or an actually-cancelled order). `Orders.tsx`'s status-sort `STATUS_RANK` map
+   gained a `"shipment cancelled"` entry (rank 1, right after `cancelled`) so the new label still
+   sorts sensibly instead of falling through to the alphabetical fallback.
+
+Not exercised against a live cancelled-shipment webhook/poll this session (would require an
+actual Shiprocket cancellation event, which is either destructive against a real shipment or
+unreproducible on demand) — verified by tracing every write path for `orders.status` /
+`shipping_status` against a `"cancel"`-classified tracking status and confirming `tsc`/`eslint`/
+`build` pass clean in both repos.
 
 **Delivery Address copy bug (`OrderDetails.tsx`)**: the address `InfoRow` had no `copyValue` at
 all — the only copy affordance near "Delivery Address" was the card header's `CopyButton`, which

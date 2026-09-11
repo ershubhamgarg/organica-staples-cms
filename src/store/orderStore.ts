@@ -129,6 +129,29 @@ export type CancelOrderResult = {
   };
 };
 
+export type RefundOrderResult = {
+  order: Order;
+  refund: {
+    attempted: boolean;
+    success: boolean;
+    message: string | null;
+    status: string | null;
+    amount: number | null;
+  };
+};
+
+export type RefundStatusResult = {
+  order: Order;
+  refund: {
+    attempted: boolean;
+    changed: boolean;
+    previousAmount?: number;
+    amount?: number;
+    status?: string | null;
+    message?: string | null;
+  };
+};
+
 export type SyncShippingResult = {
   order: Order;
   tracking: {
@@ -163,6 +186,11 @@ interface OrderState {
     id: string,
     input: { reason: string; refund: { mode: RefundMode; amount?: number } },
   ) => Promise<CancelOrderResult>;
+  refundOrder: (
+    id: string,
+    input: { reason: string; mode: "full" | "partial"; amount?: number },
+  ) => Promise<RefundOrderResult>;
+  checkRefundStatus: (id: string) => Promise<RefundStatusResult>;
   syncShippingDetails: (
     id: string,
     input: {
@@ -276,6 +304,51 @@ export const useOrderStore = create<OrderState>()((set) => ({
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to cancel order.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  refundOrder: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<RefundOrderResult>(
+        "/api/orders/refund",
+        { orderId: id, ...input },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to refund order.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  checkRefundStatus: async (id) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<RefundStatusResult>(
+        "/api/orders/refund-status",
+        { orderId: id },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to check refund status.";
       set({ error: message, isLoading: false });
       throw err;
     }
