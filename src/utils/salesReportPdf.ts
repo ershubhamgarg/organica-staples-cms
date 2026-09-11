@@ -95,11 +95,20 @@ export function downloadSalesReportPDF({
   cursorY = finalY(doc);
 
   if (gstSummary.hsnSummary.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("HSN/SAC-wise Detail", margin, cursorY + 24);
+    doc.setFont("helvetica", "normal");
+
     autoTable(doc, {
-      startY: cursorY + 20,
-      head: [["HSN/SAC", "Taxable Value", "CGST", "SGST", "IGST", "Total"]],
+      startY: cursorY + 34,
+      head: [
+        ["HSN/SAC", "Description", "Qty", "Taxable Value", "CGST", "SGST", "IGST", "Total"],
+      ],
       body: gstSummary.hsnSummary.map((row) => [
         row.hsn,
+        row.description,
+        String(row.quantity),
         money(row.taxableValue),
         money(row.cgst),
         money(row.sgst),
@@ -109,7 +118,10 @@ export function downloadSalesReportPDF({
       theme: "grid",
       headStyles: { fillColor: [197, 160, 40] },
       margin: { left: margin, right: margin },
-      styles: { fontSize: 9 },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        1: { cellWidth: 130 },
+      },
     });
     cursorY = finalY(doc);
   }

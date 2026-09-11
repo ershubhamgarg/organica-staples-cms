@@ -8,6 +8,7 @@ import {
   MapPin,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   Truck,
   ExternalLink,
   Ban,
@@ -28,6 +29,7 @@ import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { formatDateTime } from "../utils/date";
 import { displayNumber, parseNumberInput } from "../utils/number";
+import { isLocalOrder } from "../utils/localOrder";
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -118,6 +120,21 @@ export default function OrderDetails() {
       : profit < 0
         ? "rgba(239, 68, 68, 0.1)"
         : "rgba(148, 163, 184, 0.1)";
+  const isLocal = order ? isLocalOrder(order) : false;
+  // Cost to company / profit are only ever computed from a pre-purchase
+  // Shiprocket rate estimate at order creation — sync-shipping.ts corrects
+  // them to the real charge once an AWB is actually assigned (see
+  // PROJECT_CONTEXT.md's "Margin correction on actual AWB assignment").
+  // Showing that estimate as if it were final margin before then is
+  // actively misleading (real gaps of 2-3x have been observed), so it's
+  // hidden in favor of a prompt to assign one. Cancelled orders never get
+  // an AWB and are excluded from profit reporting elsewhere already, so
+  // they're not gated the same way — and neither are local orders, which
+  // are hand-delivered and never get an AWB by design, not because one is
+  // outstanding; their cost_to_company was already final at order creation
+  // (zero shipping component, correctly, rather than an unresolved estimate).
+  const awbPending =
+    !order?.shiprocket_awb_code && order?.status !== "cancelled" && !isLocal;
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!id || !order) return;
@@ -269,6 +286,22 @@ export default function OrderDetails() {
       } else {
         toast.success("Shipping details saved.");
       }
+
+      // Once Shiprocket has actually assigned a courier, its real freight
+      // charge can differ from the pre-purchase estimate the order's margin
+      // was originally computed with — reflect that correction to the admin
+      // so a changed profit figure doesn't look unexplained.
+      if (result.costCorrection.attempted) {
+        if (!result.costCorrection.success) {
+          toast.error("Could not verify the actual shipping cost with Shiprocket", {
+            description: result.costCorrection.message ?? undefined,
+          });
+        } else if (result.costCorrection.delta && Math.abs(result.costCorrection.delta) >= 0.01) {
+          toast.success("Margin recalculated using the actual shipping cost", {
+            description: result.costCorrection.message ?? undefined,
+          });
+        }
+      }
     } catch (err) {
       console.error("Failed to update shipping details:", err);
       toast.error(
@@ -414,13 +447,24 @@ export default function OrderDetails() {
               <Weight size={12} />
               {formatWeight(getOrderGrossWeightKg(order.items))}
             </span>
-            {order.shipping_status && (
+            {isLocal ? (
               <span
-                className={`badge badge-${getShippingBadgeColor(order.shipping_status)}`}
-                style={{ fontSize: "0.75rem" }}
+                className="badge badge-info"
+                style={{ fontSize: "0.75rem", gap: "5px" }}
+                data-tooltip="Hand-delivered locally — no courier or AWB involved"
               >
-                Shipping: {order.shipping_status.replace("_", " ")}
+                <MapPin size={12} />
+                Local Delivery
               </span>
+            ) : (
+              order.shipping_status && (
+                <span
+                  className={`badge badge-${getShippingBadgeColor(order.shipping_status)}`}
+                  style={{ fontSize: "0.75rem" }}
+                >
+                  Shipping: {order.shipping_status.replace("_", " ")}
+                </span>
+              )
             )}
             {isRefreshingTracking && (
               <span
@@ -461,11 +505,27 @@ export default function OrderDetails() {
                 border: "1px solid var(--border-color)",
               }}
             >
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
+              {isLocal ? (
+                <>
+                  {/* Local orders are hand-delivered, never shipped via a
+                      courier — there's no "Pending" or "Shipped" step to
+                      pass through, just processing until it's handed over. */}
+                  <option value="processing">Processing</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                  {!["processing", "delivered", "cancelled"].includes(
+                    order.status,
+                  ) && <option value={order.status}>{order.status}</option>}
+                </>
+              ) : (
+                <>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </>
+              )}
             </select>
           </div>
           {(order.rejection_reason || order.cancellation_reason) && (
@@ -714,14 +774,14 @@ export default function OrderDetails() {
                   width: "40px",
                   height: "40px",
                   borderRadius: "10px",
-                  background: profitBg,
+                  background: awbPending ? "rgba(183, 121, 31, 0.12)" : profitBg,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: profitColor,
+                  color: awbPending ? "var(--warning)" : profitColor,
                 }}
               >
-                <AlertCircle size={20} />
+                {awbPending ? <AlertTriangle size={20} /> : <AlertCircle size={20} />}
               </div>
               <div>
                 <h3 style={{ fontSize: "1.1rem", marginBottom: "2px" }}>
@@ -733,100 +793,148 @@ export default function OrderDetails() {
                     color: "var(--text-secondary)",
                   }}
                 >
-                  {profitStatus === "No Profit/Loss"
-                    ? "Break-even point"
-                    : `Total ${profitStatus.toLowerCase()} for this order`}
+                  {awbPending
+                    ? "Awaiting AWB assignment"
+                    : profitStatus === "No Profit/Loss"
+                      ? "Break-even point"
+                      : `Total ${profitStatus.toLowerCase()} for this order`}
                 </p>
               </div>
             </div>
 
-            <div
-              className="responsive-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "1rem",
-              }}
-            >
+            {awbPending ? (
               <div
                 style={{
                   padding: "1rem",
-                  background: "var(--bg-primary)",
+                  background: "rgba(183, 121, 31, 0.08)",
+                  border: "1px solid rgba(183, 121, 31, 0.25)",
                   borderRadius: "var(--radius-md)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    marginBottom: "4px",
-                  }}
-                >
-                  {profitStatus === "Loss" ? "Net Loss" : "Net Profit"}
-                </div>
-                <div
-                  style={{
-                    fontSize: "1.25rem",
-                    fontWeight: 700,
-                    color: profitColor,
-                  }}
-                >
-                  ₹{formatCurrency(Math.abs(profit))}
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    marginBottom: "4px",
-                  }}
-                >
-                  Margin
-                </div>
-                <div
-                  style={{
-                    fontSize: "1.25rem",
-                    fontWeight: 700,
-                    color: profitColor,
-                  }}
-                >
-                  {profitMargin.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-
-            {order.cost_to_company ? (
-              <div
-                style={{
-                  marginTop: "1.5rem",
-                  padding: "1rem",
-                  background: "var(--bg-primary)",
-                  borderRadius: "var(--radius-md)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
                 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: "8px",
                     fontSize: "0.85rem",
+                    color: "var(--text-primary)",
                   }}
                 >
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    Cost to Company (CTC)
-                  </span>
-                  <span style={{ fontWeight: 600 }}>
-                    ₹{formatCurrency(order.cost_to_company)}
+                  <AlertTriangle
+                    size={16}
+                    color="var(--warning)"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  />
+                  <span>
+                    Margin isn&apos;t final yet — the cost on file is only a
+                    pre-purchase Shiprocket estimate. Assign an AWB to lock in
+                    the actual shipping cost and calculate real profit.
                   </span>
                 </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<RefreshCcw size={14} />}
+                  onClick={handleOpenShippingModal}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  Assign AWB
+                </Button>
               </div>
-            ) : null}
+            ) : (
+              <>
+                <div
+                  className="responsive-grid"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "1rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "1rem",
+                      background: "var(--bg-primary)",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {profitStatus === "Loss" ? "Net Loss" : "Net Profit"}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "1.25rem",
+                        fontWeight: 700,
+                        color: profitColor,
+                      }}
+                    >
+                      ₹{formatCurrency(Math.abs(profit))}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: "1rem",
+                      background: "var(--bg-primary)",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Margin
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "1.25rem",
+                        fontWeight: 700,
+                        color: profitColor,
+                      }}
+                    >
+                      {profitMargin.toFixed(2)}%
+                    </div>
+                  </div>
+                </div>
+
+                {order.cost_to_company ? (
+                  <div
+                    style={{
+                      marginTop: "1.5rem",
+                      padding: "1rem",
+                      background: "var(--bg-primary)",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        Cost to Company (CTC)
+                      </span>
+                      <span style={{ fontWeight: 600 }}>
+                        ₹{formatCurrency(order.cost_to_company)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
 
@@ -1074,15 +1182,17 @@ export default function OrderDetails() {
                 <Truck size={20} color="var(--accent-primary)" />
                 <h3 style={{ fontSize: "1.1rem" }}>Shipping & Logistics</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<RefreshCcw size={14} />}
-                onClick={handleOpenShippingModal}
-                style={{ color: "var(--accent-primary)" }}
-              >
-                Update
-              </Button>
+              {!isLocal && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<RefreshCcw size={14} />}
+                  onClick={handleOpenShippingModal}
+                  style={{ color: "var(--accent-primary)" }}
+                >
+                  Update
+                </Button>
+              )}
             </div>
             <div
               style={{
@@ -1091,49 +1201,78 @@ export default function OrderDetails() {
                 gap: "1rem",
               }}
             >
-              <div className="card-subsection">
-                <div className="eyebrow" style={{ marginBottom: "6px" }}>
-                  Courier &amp; Tracking
-                </div>
-                <InfoRow
-                  label="Courier Partner"
-                  value={order.shiprocket_courier_name || "Not assigned"}
-                />
-                {order.shiprocket_awb_code && (
-                  <InfoRow
-                    label="AWB Code"
-                    value={order.shiprocket_awb_code}
-                    copyValue={order.shiprocket_awb_code}
-                    mono
-                    stacked
-                  />
-                )}
-                {order.shiprocket_tracking_url && (
+              {isLocal ? (
+                <div className="card-subsection">
+                  <div className="eyebrow" style={{ marginBottom: "6px" }}>
+                    Delivery Method
+                  </div>
                   <div
                     style={{
                       display: "flex",
-                      justifyContent: "flex-end",
-                      marginTop: "8px",
+                      alignItems: "flex-start",
+                      gap: "8px",
+                      fontSize: "0.85rem",
+                      color: "var(--text-primary)",
                     }}
                   >
-                    <a
-                      href={order.shiprocket_tracking_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <MapPin
+                      size={16}
+                      color="var(--accent-primary)"
+                      style={{ flexShrink: 0, marginTop: "2px" }}
+                    />
+                    <span>
+                      This order is hand-delivered locally — no courier,
+                      AWB, or Shiprocket tracking applies. Update its status
+                      directly from the dropdown above as it moves through
+                      processing and delivery.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="card-subsection">
+                  <div className="eyebrow" style={{ marginBottom: "6px" }}>
+                    Courier &amp; Tracking
+                  </div>
+                  <InfoRow
+                    label="Courier Partner"
+                    value={order.shiprocket_courier_name || "Not assigned"}
+                  />
+                  {order.shiprocket_awb_code && (
+                    <InfoRow
+                      label="AWB Code"
+                      value={order.shiprocket_awb_code}
+                      copyValue={order.shiprocket_awb_code}
+                      mono
+                      stacked
+                    />
+                  )}
+                  {order.shiprocket_tracking_url && (
+                    <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        fontSize: "0.85rem",
-                        color: "var(--accent-primary)",
-                        textDecoration: "none",
+                        justifyContent: "flex-end",
+                        marginTop: "8px",
                       }}
                     >
-                      Track Shipment <ExternalLink size={14} />
-                    </a>
-                  </div>
-                )}
-              </div>
+                      <a
+                        href={order.shiprocket_tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          fontSize: "0.85rem",
+                          color: "var(--accent-primary)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Track Shipment <ExternalLink size={14} />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {order.shipping_error && (
                 <div

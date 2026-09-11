@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, PackageSearch, Weight } from "lucide-react";
+import { Eye, PackageSearch, Weight, AlertTriangle } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
@@ -10,6 +10,7 @@ import Card from "../components/ui/Card";
 import CopyButton from "../components/ui/CopyButton";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
+import { isLocalOrder } from "../utils/localOrder";
 
 export default function Orders() {
   const { orders, isLoading, error, fetchOrders } = useOrderStore();
@@ -162,31 +163,60 @@ export default function Orders() {
                         </span>
                       </td>
                       <td style={{ padding: "16px" }}>
-                        <span
-                          className={`badge badge-${getStatusColor(order.status)}`}
-                        >
-                          {order.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <span
+                        <div
                           style={{
-                            fontWeight: 600,
-                            color:
-                              (order.profit_loss || 0) > 0
-                                ? "var(--success)"
-                                : (order.profit_loss || 0) < 0
-                                  ? "var(--danger)"
-                                  : "var(--text-secondary)",
+                            display: "flex",
+                            gap: "6px",
+                            flexWrap: "wrap",
                           }}
                         >
-                          {(order.profit_loss || 0) > 0
-                            ? "+"
-                            : (order.profit_loss || 0) < 0
-                              ? "-"
-                              : ""}
-                          ₹{formatCurrency(Math.abs(order.profit_loss || 0))}
-                        </span>
+                          <span
+                            className={`badge badge-${getStatusColor(order.status)}`}
+                          >
+                            {order.status}
+                          </span>
+                          {isLocalOrder(order) && (
+                            <span
+                              className="badge badge-info"
+                              data-tooltip="Hand-delivered locally — no courier or AWB involved"
+                            >
+                              Local
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: "16px" }}>
+                        {!order.shiprocket_awb_code &&
+                        order.status !== "cancelled" &&
+                        !isLocalOrder(order) ? (
+                          <span
+                            className="badge badge-warning"
+                            style={{ gap: "5px" }}
+                            data-tooltip="Margin is a pre-purchase estimate until an AWB is assigned"
+                          >
+                            <AlertTriangle size={12} />
+                            Pending AWB
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color:
+                                (order.profit_loss || 0) > 0
+                                  ? "var(--success)"
+                                  : (order.profit_loss || 0) < 0
+                                    ? "var(--danger)"
+                                    : "var(--text-secondary)",
+                            }}
+                          >
+                            {(order.profit_loss || 0) > 0
+                              ? "+"
+                              : (order.profit_loss || 0) < 0
+                                ? "-"
+                                : ""}
+                            ₹{formatCurrency(Math.abs(order.profit_loss || 0))}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: "16px", textAlign: "right" }}>
                         <button

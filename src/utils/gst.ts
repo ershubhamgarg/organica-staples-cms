@@ -92,6 +92,42 @@ export function isIntraState(buyerState: string | null | undefined): boolean {
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+// The HSN summary mixes real product HSN codes with two synthetic,
+// non-product rows: "Charges" (shipping/convenience/COD, taxed as an
+// incidental supply but not itself an HSN-classified good) and "-" (a
+// product with no HSN code assigned at all). Sorting by tax amount made
+// these interleave unpredictably with real HSN rows — pin them to the end,
+// in that order, so the table reads as "real HSN codes, then the two
+// catch-alls" rather than an arbitrary mix.
+const UNASSIGNED_HSN = "-";
+const CHARGES_HSN = "Charges";
+
+function hsnSortRank(hsn: string): number {
+  if (hsn === CHARGES_HSN) return 1;
+  if (hsn === UNASSIGNED_HSN) return 2;
+  return 0;
+}
+
+function sortHsnLines<T extends { hsn: string }>(lines: T[]): T[] {
+  return lines.sort((a, b) => {
+    const rankDiff = hsnSortRank(a.hsn) - hsnSortRank(b.hsn);
+    if (rankDiff !== 0) return rankDiff;
+    return a.hsn.localeCompare(b.hsn, undefined, { numeric: true });
+  });
+}
+
+// The "-" (no HSN) row can end up aggregating many unrelated products —
+// joining every one of their names into the description makes it an
+// unreadable wall of text, and isn't actually useful (the point of this
+// row is to flag "these need an HSN code assigned", not to list what they
+// are). Real HSN rows and the "Charges" row keep their normal description.
+function describeHsnGroup(hsn: string, names: Set<string>): string {
+  if (hsn === UNASSIGNED_HSN) {
+    return "Products without an HSN code assigned — add one on the product to classify this sale";
+  }
+  return Array.from(names).join(", ");
+}
+
 /** Splits a GST-inclusive amount into its taxable value and tax component. */
 function splitInclusiveTax(inclusiveAmount: number) {
   const taxableValue = round2(inclusiveAmount / (1 + GST_RATE / 100));
@@ -101,6 +137,8 @@ function splitInclusiveTax(inclusiveAmount: number) {
 
 export interface HsnTaxLine {
   hsn: string;
+  description: string;
+  quantity: number;
   taxableValue: number;
   cgst: number;
   sgst: number;
@@ -111,6 +149,8 @@ export interface HsnTaxLine {
 export interface OrderTaxBreakdown {
   orderId: string;
   orderDate: string;
+  invoiceNumber: string | null;
+  customerName: string | null;
   intraState: boolean;
   buyerState: string | null;
   buyerStateCode: string | null;
@@ -128,11 +168,19 @@ export interface OrderTaxBreakdown {
  * coupon discount across line items, split each GST-inclusive line (plus
  * shipping/convenience/COD, which are taxed as incidental charges under
  * Sec. 15(2)(c)) into taxable value + CGST/SGST or IGST, and group by HSN.
+ *
+ * HSN comes straight off each order's own stored item snapshot
+ * (`item.hsn_code`, captured at checkout time from the product) rather
+ * than a live join back to the current products table — that's both more
+ * correct (reflects the HSN in effect when the order was actually placed,
+ * not whatever the product's HSN has since been edited to) and sidesteps
+ * a real bug a product-id join had: `products.id` is a Postgres integer,
+ * returned by Supabase as a JS `number`, but was being looked up via a
+ * `String(item.id)` key — a `Map<number, ...>` never matches a string
+ * key, so every item silently fell back to "-" and nothing consolidated
+ * by its real HSN code at all.
  */
-export function computeOrderTax(
-  order: Order,
-  hsnByProductId: Map<string, string | null>,
-): OrderTaxBreakdown {
+export function computeOrderTax(order: Order): OrderTaxBreakdown {
   const buyerState = order.delivery_address?.state ?? null;
   const intraState = isIntraState(buyerState);
   const buyerStateCode = getStateCode(buyerState);
@@ -146,23 +194,39 @@ export function computeOrderTax(
     subtotal > 0 ? Math.max(0, (subtotal - couponDiscount) / subtotal) : 1;
 
   const hsnLines: HsnTaxLine[] = [];
+  const hsnDescriptions = new Map<string, Set<string>>();
   const addToHsn = (
     hsn: string,
+    description: string,
+    quantity: number,
     taxableValue: number,
     cgst: number,
     sgst: number,
     igst: number,
     total: number,
   ) => {
+    if (!hsnDescriptions.has(hsn)) hsnDescriptions.set(hsn, new Set());
+    hsnDescriptions.get(hsn)!.add(description);
+
     const existing = hsnLines.find((row) => row.hsn === hsn);
     if (existing) {
+      existing.quantity += quantity;
       existing.taxableValue = round2(existing.taxableValue + taxableValue);
       existing.cgst = round2(existing.cgst + cgst);
       existing.sgst = round2(existing.sgst + sgst);
       existing.igst = round2(existing.igst + igst);
       existing.total = round2(existing.total + total);
     } else {
-      hsnLines.push({ hsn, taxableValue, cgst, sgst, igst, total });
+      hsnLines.push({
+        hsn,
+        description,
+        quantity,
+        taxableValue,
+        cgst,
+        sgst,
+        igst,
+        total,
+      });
     }
   };
 
@@ -179,7 +243,7 @@ export function computeOrderTax(
     const cgst = intraState ? round2(taxAmount / 2) : 0;
     const sgst = intraState ? round2(taxAmount - cgst) : 0;
     const igst = intraState ? 0 : taxAmount;
-    const hsn = hsnByProductId.get(String(item.id)) ?? "-";
+    const hsn = item.hsn_code?.trim() || "-";
 
     goodsTaxable = round2(goodsTaxable + taxableValue);
     goodsCgst = round2(goodsCgst + cgst);
@@ -187,7 +251,16 @@ export function computeOrderTax(
     goodsIgst = round2(goodsIgst + igst);
     goodsTotal = round2(goodsTotal + lineTotal);
 
-    addToHsn(hsn, taxableValue, cgst, sgst, igst, lineTotal);
+    addToHsn(
+      hsn,
+      item.name,
+      item.quantity,
+      taxableValue,
+      cgst,
+      sgst,
+      igst,
+      lineTotal,
+    );
   }
 
   // Shipping, convenience and COD charges are incidental to the supply of
@@ -212,8 +285,25 @@ export function computeOrderTax(
     ancillaryCgst = cgst;
     ancillarySgst = sgst;
     ancillaryIgst = igst;
-    addToHsn("Charges", taxableValue, cgst, sgst, igst, ancillaryAmount);
+    addToHsn(
+      "Charges",
+      "Shipping / Convenience / COD Charges",
+      0,
+      taxableValue,
+      cgst,
+      sgst,
+      igst,
+      ancillaryAmount,
+    );
   }
+
+  for (const line of hsnLines) {
+    const descriptions = hsnDescriptions.get(line.hsn);
+    if (descriptions) {
+      line.description = describeHsnGroup(line.hsn, descriptions);
+    }
+  }
+  sortHsnLines(hsnLines);
 
   const taxableValue = round2(goodsTaxable + ancillaryTaxable);
   const cgst = round2(goodsCgst + ancillaryCgst);
@@ -225,6 +315,8 @@ export function computeOrderTax(
   return {
     orderId: order.id,
     orderDate: new Date(order.created_at).toLocaleDateString(),
+    invoiceNumber: order.invoice_number ?? null,
+    customerName: order.delivery_address?.name ?? null,
     intraState,
     buyerState,
     buyerStateCode,
@@ -260,14 +352,9 @@ export interface GstSummary {
 
 /** Cancelled orders represent no completed supply, so — same convention as
  * computeSalesSummary in salesReport.ts — they're excluded from turnover. */
-export function computeGstSummary(
-  orders: Order[],
-  hsnByProductId: Map<string, string | null>,
-): GstSummary {
+export function computeGstSummary(orders: Order[]): GstSummary {
   const activeOrders = orders.filter((o) => o.status !== "cancelled");
-  const breakdowns = activeOrders.map((order) =>
-    computeOrderTax(order, hsnByProductId),
-  );
+  const breakdowns = activeOrders.map((order) => computeOrderTax(order));
 
   let taxableValue = 0;
   let cgst = 0;
@@ -276,6 +363,7 @@ export function computeGstSummary(
   let intraStateOrders = 0;
   let interStateOrders = 0;
   const hsnSummary: HsnTaxLine[] = [];
+  const hsnDescriptions = new Map<string, Set<string>>();
   const stateMap = new Map<string, StateTaxRow>();
 
   for (const b of breakdowns) {
@@ -287,8 +375,13 @@ export function computeGstSummary(
     else interStateOrders += 1;
 
     for (const line of b.hsnLines) {
+      if (!hsnDescriptions.has(line.hsn)) hsnDescriptions.set(line.hsn, new Set());
+      const descriptions = hsnDescriptions.get(line.hsn)!;
+      for (const name of line.description.split(", ")) descriptions.add(name);
+
       const existing = hsnSummary.find((row) => row.hsn === line.hsn);
       if (existing) {
+        existing.quantity += line.quantity;
         existing.taxableValue = round2(existing.taxableValue + line.taxableValue);
         existing.cgst = round2(existing.cgst + line.cgst);
         existing.sgst = round2(existing.sgst + line.sgst);
@@ -316,6 +409,13 @@ export function computeGstSummary(
     }
   }
 
+  for (const line of hsnSummary) {
+    const descriptions = hsnDescriptions.get(line.hsn);
+    if (descriptions) {
+      line.description = describeHsnGroup(line.hsn, descriptions);
+    }
+  }
+
   return {
     taxableValue,
     cgst,
@@ -324,7 +424,7 @@ export function computeGstSummary(
     totalTax: round2(cgst + sgst + igst),
     intraStateOrders,
     interStateOrders,
-    hsnSummary: hsnSummary.sort((a, b) => b.total - a.total),
+    hsnSummary: sortHsnLines(hsnSummary),
     stateSummary: Array.from(stateMap.values()).sort(
       (a, b) => b.taxableValue - a.taxableValue,
     ),

@@ -23,6 +23,7 @@ export interface CartItem {
   images?: string[] | string | null;
   weight?: string;
   wholesale_price?: number;
+  hsn_code?: string | null;
   [key: string]: any;
 }
 
@@ -67,6 +68,9 @@ export interface Order {
   discount_amount?: number | null;
   shipping_amount?: number | null;
   extra_shipping_amount?: number | null;
+  /** Shiprocket freight charge — an estimate at order creation, corrected to
+   * the actual amount once an AWB is assigned (see api/orders/sync-shipping.ts). */
+  freight_charge?: number | null;
   convenience_fee_amount?: number | null;
   cod_amount?: number | null;
   wholesale_total_amount?: number | null;
@@ -134,6 +138,13 @@ export type SyncShippingResult = {
     courierName: string | null;
     status: string | null;
     trackingUrl: string | null;
+  };
+  costCorrection: {
+    attempted: boolean;
+    success: boolean;
+    message: string | null;
+    actualFreightCharge: number | null;
+    delta: number | null;
   };
 };
 

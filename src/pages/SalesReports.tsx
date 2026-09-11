@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, FileText, Receipt } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FileSpreadsheet, FileText, FileDown, Receipt } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
-import { useProductStore } from "../store/productStore";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -82,28 +81,12 @@ function StatCard({
 
 export default function SalesReports() {
   const orders = useOrderStore((state) => state.orders);
-  const products = useProductStore((state) => state.products);
-  const fetchProducts = useProductStore((state) => state.fetchProducts);
   const [preset, setPreset] = useState<DatePreset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("day");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-
-  useEffect(() => {
-    // HSN codes (needed for the GST/tax breakdown) live on products, not
-    // orders — most pages don't need the product list loaded at all, so
-    // top it up here rather than assuming another page already has.
-    if (products.length === 0) {
-      fetchProducts();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const hsnByProductId = useMemo(
-    () => new Map(products.map((p) => [p.id, p.hsn_code ?? null])),
-    [products],
-  );
+  const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
 
   const range = useMemo(
     () =>
@@ -128,14 +111,24 @@ export default function SalesReports() {
   );
 
   const gstSummary = useMemo(
-    () => computeGstSummary(filteredOrders, hsnByProductId),
-    [filteredOrders, hsnByProductId],
+    () => computeGstSummary(filteredOrders),
+    [filteredOrders],
+  );
+
+  // Shared by the PDF and Excel exports — both are the same tax report,
+  // just in different formats.
+  const orderTaxBreakdowns = useMemo(
+    () =>
+      filteredOrders
+        .filter((order) => order.status !== "cancelled")
+        .map((order) => computeOrderTax(order)),
+    [filteredOrders],
   );
 
   const rangeLabel = `${range.start.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })} – ${range.end.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}`;
 
   const handleExportCSV = () => {
-    const csv = ordersToCSV(filteredOrders, hsnByProductId);
+    const csv = ordersToCSV(filteredOrders);
     downloadCSV(
       csv,
       `sales-orders-${range.start.toISOString().slice(0, 10)}_to_${range.end.toISOString().slice(0, 10)}.csv`,
@@ -156,12 +149,31 @@ export default function SalesReports() {
         activeOrders: summary.activeOrders,
         cancelledOrders: summary.cancelledOrders,
         gstSummary,
-        orderTaxBreakdowns: filteredOrders
-          .filter((order) => order.status !== "cancelled")
-          .map((order) => computeOrderTax(order, hsnByProductId)),
+        orderTaxBreakdowns,
       });
     } finally {
       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setIsGeneratingExcel(true);
+      // Same reasoning as the PDF import below — xlsx is a sizeable library
+      // no other page needs, so it's only loaded when this button is used.
+      const { downloadSalesReportExcel } = await import(
+        "../utils/salesReportExcel"
+      );
+      downloadSalesReportExcel({
+        rangeLabel,
+        totalOrders: summary.totalOrders,
+        activeOrders: summary.activeOrders,
+        cancelledOrders: summary.cancelledOrders,
+        gstSummary,
+        orderTaxBreakdowns,
+      });
+    } finally {
+      setIsGeneratingExcel(false);
     }
   };
 
@@ -176,14 +188,23 @@ export default function SalesReports() {
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
             <Button
               variant="secondary"
-              icon={<FileSpreadsheet size={16} />}
+              icon={<FileText size={16} />}
               onClick={handleExportCSV}
               disabled={!hasOrders}
             >
               Export CSV
             </Button>
             <Button
-              icon={<FileText size={16} />}
+              variant="secondary"
+              icon={<FileSpreadsheet size={16} />}
+              onClick={handleExportExcel}
+              disabled={!hasOrders}
+              loading={isGeneratingExcel}
+            >
+              Export Excel
+            </Button>
+            <Button
+              icon={<FileDown size={16} />}
               onClick={handleExportPDF}
               disabled={!hasOrders}
               loading={isGeneratingPdf}
@@ -438,6 +459,12 @@ export default function SalesReports() {
                           HSN
                         </th>
                         <th style={{ padding: "8px 12px", fontWeight: 500 }}>
+                          Description
+                        </th>
+                        <th style={{ padding: "8px 12px", fontWeight: 500 }}>
+                          Qty
+                        </th>
+                        <th style={{ padding: "8px 12px", fontWeight: 500 }}>
                           Taxable
                         </th>
                         <th style={{ padding: "8px 12px", fontWeight: 500 }}>
@@ -466,6 +493,16 @@ export default function SalesReports() {
                           >
                             {row.hsn}
                           </td>
+                          <td
+                            style={{
+                              padding: "8px 12px",
+                              color: "var(--text-secondary)",
+                              maxWidth: "220px",
+                            }}
+                          >
+                            {row.description}
+                          </td>
+                          <td style={{ padding: "8px 12px" }}>{row.quantity}</td>
                           <td style={{ padding: "8px 12px" }}>
                             ₹{formatCurrency(row.taxableValue)}
                           </td>

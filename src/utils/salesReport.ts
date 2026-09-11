@@ -326,10 +326,7 @@ function csvEscape(value: string | number): string {
   return str;
 }
 
-export function ordersToCSV(
-  orders: Order[],
-  hsnByProductId: Map<string, string | null>,
-): string {
+export function ordersToCSV(orders: Order[]): string {
   const headers = [
     "Order ID",
     "Invoice Number",
@@ -364,7 +361,7 @@ export function ordersToCSV(
   ];
 
   const rows = orders.map((order) => {
-    const tax = computeOrderTax(order, hsnByProductId);
+    const tax = computeOrderTax(order);
     const hsnCodes = Array.from(
       new Set(tax.hsnLines.map((line) => line.hsn).filter((h) => h !== "-")),
     ).join("; ");

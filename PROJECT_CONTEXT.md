@@ -77,7 +77,7 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 7. **Launch Interest Leads:** View "Launching Soon" waitlist signups and track follow-up emails.
 8. **Customers:** Aggregated customer list (name, email, phone, order count, total spent) derived from order history.
 9. **Cancel Order + Refund:** Cancel an order, auto-cancel its Shiprocket shipment, and issue a full or partial Razorpay refund, all in one action with a required reason — see `api/orders/cancel.ts`.
-10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link — see `api/orders/sync-shipping.ts`.
+10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link, and — once a courier is actually assigned — corrects the order's margin from Shiprocket's real freight charge. See below for details, and `api/orders/sync-shipping.ts`.
 11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
 
 ## Environment Setup
@@ -258,10 +258,21 @@ directly from this report. Deliberately mirrors the storefront's `lib/invoice.ts
 line-for-line (`SELLER` constants including GSTIN, the `STATE_CODES` table, `isIntraState`,
 and the GST-inclusive-price split `taxableValue = amount / 1.05`) rather than inventing a
 second, potentially-diverging implementation — the numbers here must always reconcile with the
-numbers on the actual tax invoices the storefront generates for the same orders. HSN codes come
-from `useProductStore`'s already-loaded `products` list (each item's `id` is looked up against
-`product.hsn_code`), so `SalesReports.tsx` lazily fetches products if that store is still empty,
-the same pattern `Header.tsx` uses for its global search. Provides, per the selected date range:
+numbers on the actual tax invoices the storefront generates for the same orders. HSN codes are
+read directly off each order's own stored `items[].hsn_code` (captured on the storefront's side
+in `recomputeOrderPricing`, `app/api/orders/route.ts`, at order-placement time) rather than via a
+live join back to the current `products` table. This was a deliberate fix, not the original
+design: the first version built a `Map<string, hsn_code>` keyed by `product.id` fetched from
+`useProductStore`, looked up via `hsnByProductId.get(String(item.id))` — but `products.id` is a
+Postgres integer, which Supabase returns as a JS `number` (confirmed live: `{"id":9,...}`), so
+the map's keys were numbers while the lookup used a string key, which **never matched** — every
+item silently fell back to the "-" (unknown) bucket and nothing consolidated by its real HSN at
+all. Reading `item.hsn_code` straight off the order sidesteps that class of bug entirely (no join,
+no type coercion to get wrong) and is more correct besides — it reflects the HSN actually in
+effect when the order was placed, not whatever the product's HSN has since been edited to.
+Verified the fix with a standalone script (two orders, two different products sharing one HSN
+code) confirming the summary now correctly consolidates to one row with quantities summed instead
+of splitting. Provides, per the selected date range:
 total taxable value (turnover), CGST/SGST/IGST/total tax, an HSN-wise summary table (shipping/
 convenience/COD fees are grouped under a synthetic "Charges" HSN row, matching the invoice
 generator's treatment of them as incidental charges under Sec. 15(2)(c)), and a state-wise
@@ -270,6 +281,142 @@ HSN codes, taxable value, CGST/SGST/IGST, place of supply, supply type), and the
 "This Financial Year"/"Last Financial Year" (April–March) date presets alongside the calendar-
 based ones, since that's the range a CA actually asks for at filing time, not "This Year".
 Like the rest of this report, cancelled orders are excluded from turnover/tax figures.
+
+Each `HsnTaxLine` also carries `description` (the distinct product name(s) sold under that HSN,
+joined with ", " — the "Charges" pseudo-row's description is a fixed
+"Shipping / Convenience / COD Charges" label) and `quantity` (units sold), matching what a GSTR-1
+HSN summary actually needs beyond just the monetary totals — both `computeOrderTax` and
+`computeGstSummary` accumulate these the same way they accumulate the tax amounts (a `Set` per
+HSN code across orders, joined into the final string once at the end, so the same product
+appearing in multiple orders isn't repeated).
+
+**Row ordering and the two synthetic rows**: the summary mixes real product HSN codes with two
+non-product rows — `"Charges"` (shipping/convenience/COD) and `"-"` (a product with no HSN code
+assigned). Sorting by tax amount, the original approach, made these interleave unpredictably with
+real HSN rows depending on which happened to have the largest total on a given date range — a
+large "-" bucket (e.g. from orders predating the storefront's HSN-attachment fix, or products that
+just don't have an HSN set) could easily sort to the very top. `sortHsnLines()` now always orders
+real HSN codes first (ascending, numeric-aware), then `"Charges"`, then `"-"` last, regardless of
+amount — same fix applied identically in `computeOrderTax` (per-order) and `computeGstSummary`
+(the aggregated table all three exports/the page read from), so PDF, Excel, and the on-screen
+table all inherit it automatically. Also stopped joining every product name into the `"-"` row's
+description (this row's name-set has no ceiling — it can span everything lacking an HSN code — and
+an unbounded comma list isn't actually useful information); `describeHsnGroup()` gives it a fixed
+explanatory label instead: "Products without an HSN code assigned — add one on the product to
+classify this sale".
+
+**Third export format — Excel** (`src/utils/salesReportExcel.ts`, `xlsx`/SheetJS): the same
+tax-only content as the PDF (order counts, GST summary, HSN-wise detail, state-wise summary, and
+the per-order tax table — now also with invoice number and customer name, since a spreadsheet
+isn't page-width-constrained the way the PDF is), laid out as four sheets (Summary, HSN Summary,
+State Summary, Order Tax Detail) so a CA can filter/pivot it directly rather than working from a
+fixed PDF layout. Lazy-loaded on the Export Excel click, same reasoning and pattern as the PDF
+import. **The `xlsx` package is installed from SheetJS's own CDN tarball
+(`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`), not the npm registry** — the npm-published
+`xlsx` is stuck on 0.18.5 with two unpatched high-severity advisories (prototype pollution, ReDoS)
+that SheetJS fixed only in their own actively-maintained CDN builds after moving off npm. Both
+vulnerable code paths are in *parsing* untrusted input (`XLSX.read`/`readFile`) — this app only
+ever calls `XLSX.utils.*`/`writeFile` to generate a workbook from its own trusted order data, so
+the exploitable path was never reachable either way, but there was no reason to ship a
+known-vulnerable dependency when the vendor's own patched build is a drop-in replacement (same
+package name and API in `package.json`, just a different install source).
+
+### Margin correction on actual AWB assignment (`api/orders/sync-shipping.ts`)
+
+`cost_to_company`/`profit_loss` are computed exactly once, inside the Postgres RPC
+`place_order_with_inventory` (storefront repo, `supabase/migrations/20260910010000_variant_aware_place_order.sql`),
+at order-creation time:
+
+```
+cost_to_company = wholesale_total_amount + extra_shipping_amount + 20 (packing) + 0.02 × total_amount (gateway)
+profit_loss     = total_amount - cost_to_company
+```
+
+`extra_shipping_amount` (the shipping cost the business absorbs, i.e. freight not recovered from
+the customer) is derived at checkout from a **pre-purchase Shiprocket rate/serviceability check**
+(`/courier/serviceability/`, called before any real shipment exists) — necessarily an estimate,
+using a locally-guessed package weight rather than whatever Shiprocket ends up actually charging
+once a courier is picked and the shipment is weighed. Traced every consumer of `extra_shipping_amount`/
+`cost_to_company`/`profit_loss` and confirmed nothing else in either repo ever recomputes them —
+they sit at whatever the estimate produced, forever, unless something corrects them.
+
+This CMS is that correction. `sync-shipping.ts` already fetches Shiprocket tracking data whenever
+an AWB is known (either freshly typed into "Update Shipping Details", or already stored, checked
+automatically whenever the Order Details page loads — see `OrderDetails.tsx`). The same request now
+also — whenever both a `shiprocket_order_id` and an AWB are known — calls Shiprocket's
+`GET /orders/show/{shiprocket_order_id}` (a call neither repo made before this) to read the real
+`freight_charges`, and applies it as a **delta**, not a recompute-from-scratch: since
+`shipping_amount` (what the customer paid) is fixed and immutable, and in every branch of the
+checkout's discount/free-shipping/capping logic `shipping_amount + extra_shipping_amount` always
+equals the estimated total freight, the same identity holds for the actual figure:
+`actual_extra_shipping = max(0, actual_freight_charge − shipping_amount)`. The stored
+`extra_shipping_amount`, `cost_to_company` (+= delta), `profit_loss` (−= delta), and `freight_charge`
+(overwritten with the now-known actual value — it existed as a column already, populated with the
+estimate at creation, but excluded from the CTC formula since `20260527000002_fix_shipping_ctc_final.sql`)
+are all updated together, only when the delta is ≥ ₹0.01 (skips a no-op write when the estimate
+already matched). The "Update Shipping Details" modal shows a toast either way — informing the
+admin the margin changed and by how much, or that Shiprocket confirmed the estimate — so a
+suddenly-different profit figure doesn't look unexplained; the automatic on-page-load sync applies
+the same correction silently, matching how it already handles tracking updates there.
+
+**Response shape — verified against 4 real live orders, not guessed**: `GET /orders/show/{id}` is
+a call neither repo made before this, and Shiprocket's public docs suggest the freight charge
+would live at `data.shipments[].freight_charges` or `data.freight_charges` — **both wrong**. The
+real, undocumented location is `data.awb_data.charges.freight_charges` (confirmed by fetching this
+endpoint directly against 4 production orders with the real `SHIPROCKET_EMAIL`/`SHIPROCKET_PASSWORD`
+from `.env.local`, a safe read-only call). `data.shipments` does exist, but as a single object
+(not an array) carrying shipment status/courier/AWB info, not charges — following the docs' guess
+would have silently read `undefined` forever, in this case failing closed correctly. Also observed
+live and specifically guarded against: `freight_charges` can be the **empty string `""`**
+(Shiprocket hasn't finalized it yet, e.g. pickup not yet scheduled) rather than simply absent —
+`Number("")` evaluates to `0` in JS, which the first version of this code would have silently read
+as "Shiprocket charged nothing" and wiped out a real, substantial cost. Caught this before shipping
+by testing against orders in that exact state; empty/whitespace-only strings are now treated the
+same as "not present yet" (correction skipped, not zeroed). One order tested had a real, differing
+actual charge — estimate ₹475.35 vs. actual ₹182.46 — confirming both that the delta math is
+directionally correct (this order's margin improves once corrected, since the estimate overstated
+the shipping loss) and that real-world estimate/actual gaps here are large enough to matter.
+
+**Hiding the estimate instead of showing it as final** — `OrderDetails.tsx`'s "Profit Analysis"
+card and `Orders.tsx`'s per-row Profit/Loss column both gate on
+`awbPending = !order.shiprocket_awb_code && order.status !== "cancelled"`. While pending, the
+numbers are replaced with a warning (an amber `AlertTriangle`, explanatory copy, and — on the
+Order Details page — an "Assign AWB" button that opens the same "Update Shipping Details" modal
+`handleOpenShippingModal` already opens) rather than computed from `profit_loss`/`cost_to_company`
+at all, since those are the pre-correction estimate until an AWB exists and can be off by 2-3x (see
+above). Cancelled orders are exempt from the gate — they'll never get an AWB, so gating them would
+be a permanent, unfixable warning rather than a prompt toward a real fix, and they're already
+excluded from profit reporting elsewhere (Dashboard, Sales Reports). Once `sync-shipping.ts`'s
+correction lands (AWB assigned, actual freight fetched), both surfaces automatically flip back to
+showing the real figures — no separate "is this corrected yet" flag needed, `shiprocket_awb_code`
+being set is itself the signal.
+
+**Local (hand-delivered) orders — `src/utils/localOrder.ts`**: the same `awbPending` gate above
+initially treated *every* order without an AWB as "estimate pending", which is wrong for orders
+that will never get one by design. The storefront already has a full local-delivery concept —
+orders to a single configured pincode (`125055` by default, `NEXT_PUBLIC_LOCAL_DELIVERY_PINCODE`
+in that repo) skip Shiprocket entirely (`lib/shipping.ts`/`lib/shiprocket.ts`'s
+`isLocalDeliveryPincode`/local-delivery short-circuit) — the CMS just had no awareness of it.
+`isLocalOrder()` mirrors that pincode check (kept in sync via this repo's own
+`VITE_LOCAL_DELIVERY_PINCODE`, same default), **and** independently checks
+`shipping_status === "local_delivery"`, since the storefront only ever writes that value when its
+own `NEXT_PUBLIC_ENABLE_SHIPROCKET_SHIPMENT` flag is on — with it off, a local order's
+`shipping_status` looks identical to any other pending order's, so the pincode is the more robust
+signal and either one is treated as sufficient. Verified against a real production order
+(`7f81559f…`, zip `125055`, `shipping_status: "local_delivery"`, no AWB): its `cost_to_company`/
+`profit_loss` are already correctly computed with a zero shipping component (`extra_shipping_amount: 0`
+— nothing to estimate, there's no courier) — a **final** ₹69.36 profit that the `awbPending` gate
+was, before this fix, incorrectly hiding behind a permanent "assign an AWB" prompt.
+
+Where this is used: `OrderDetails.tsx` — `awbPending` additionally requires `!isLocal`; the header
+shows a "Local Delivery" badge (via `MapPin`) in place of the generic shipping-status badge; the
+status `<select>` offers only Processing/Delivered/Cancelled (no Pending/Shipped — there's no
+courier hand-off step to pass through), always including the order's current status as a
+fallback option even if it falls outside that set so the dropdown never renders blank; and the
+"Shipping & Logistics" card replaces the courier/AWB/tracking UI and its "Update" button (nothing
+to sync) with a plain explanatory note. `Orders.tsx` applies the same `!isLocalOrder(order)`
+condition to its Profit/Loss column's gate, and adds a small "Local" badge next to the status
+badge in the list so these orders are identifiable without opening each one.
 
 ### Invoice download (`api/orders/invoice.ts`)
 
