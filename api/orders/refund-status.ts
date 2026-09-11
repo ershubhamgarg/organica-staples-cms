@@ -71,11 +71,16 @@ export default async function handler(request: Request): Promise<Response> {
     return json({ error: "orderId is required." }, 400);
   }
 
+  // Selects the full row (not just the refund-related columns this endpoint
+  // cares about) because three of the four response branches below return
+  // this same `order` object as-is — the client's store action replaces the
+  // order's entire entry in its global list with whatever `order` comes
+  // back, so a partial row here would silently truncate that order
+  // everywhere else it's displayed (e.g. Orders.tsx crashing on a missing
+  // `items` array the moment it's rendered from the corrupted store state).
   const { data: order, error: fetchError } = await supabaseAdmin
     .from("orders")
-    .select(
-      "id, payment_method, payment_details, refund_status, refund_amount, razorpay_refund_id, refunded_at",
-    )
+    .select("*")
     .eq("id", orderId)
     .single();
 

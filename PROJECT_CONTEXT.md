@@ -566,6 +566,32 @@ wrote. When `changed` is true, a `toast.info` surfaces it (e.g. "Refund status u
 Razorpay — ₹500.00 processed.") so the admin actually notices a refund they didn't initiate
 here, rather than the balance just quietly changing underneath them.
 
+**Production incident: blank screen navigating Order Details → Orders.** Caused by
+`refund-status.ts`'s initial Supabase read originally selecting only 7 refund-related columns
+(`id, payment_method, payment_details, refund_status, refund_amount, razorpay_refund_id,
+refunded_at`) and then — in 3 of its 4 response branches (not paid via Razorpay; Razorpay lookup
+failed; nothing changed, by far the most common outcome) — returning that same partial `order`
+object as-is, rather than only the one branch that calls `.update().select()` and gets the full
+row back. `checkRefundStatus`'s store action does an unconditional `orders.map(o => o.id === id
+? result.order : o)`, so it silently overwrote that order's entry in the **global** `orders`
+array with the stripped-down object — missing `items`, `total_amount`, `delivery_address`,
+`created_at`, `status`, everything. `OrderDetails.tsx`'s own local `order` state was fine (it
+only ever merges the specific refund fields it needs from the response), but the global store
+now held a corrupted entry for that order. The instant the admin clicked "Orders" in the
+sidebar, `Orders.tsx` did its first render using whatever `orders` the store already had —
+*before* its own `fetchOrders()` effect had a chance to run and overwrite it — hit
+`getOrderGrossWeightKg(order.items)` on the corrupted entry, and crashed on `items.reduce` since
+`items` was `undefined`. No error boundary exists, so the whole React tree unmounted: blank
+screen. Two fixes: (1) `refund-status.ts`'s initial select is now `"*"` (the full row), so every
+response branch — not just the "changed" one — always returns a complete order; (2)
+`getOrderGrossWeightKg` (`src/utils/weight.ts`) now treats a missing/null `items` as `0` rather
+than throwing, as cheap defense-in-depth against the same *class* of bug from anywhere else a
+partial order object might leak into the shared store. Checked every other `api/orders/*.ts`
+endpoint for the same pattern (a narrow-selected row returned directly to the client without an
+`.update().select()` round-trip first) — `cancel.ts`, `refund.ts`, and `sync-shipping.ts` all
+only ever return the full row from their final `.update().select().single()`, never their
+narrower initial read, so this was specific to `refund-status.ts`.
+
 ### Cancelled shipment ≠ cancelled order
 
 **Bug**: a shipment getting cancelled at Shiprocket's end (RTO, a failed pickup, or a manual

@@ -23,8 +23,13 @@ export function parseWeightKg(weight: string | undefined | null): number {
 }
 
 export function getOrderGrossWeightKg(
-  items: { weight?: string | null; quantity: number }[],
+  items: { weight?: string | null; quantity: number }[] | null | undefined,
 ): number {
+  // A malformed/partial order object (missing `items` entirely) should
+  // render as 0kg, not crash the page it's rendered on — this has actually
+  // happened in production when an API route returned a stripped-down order
+  // object into the shared order store (see api/orders/refund-status.ts).
+  if (!items) return 0;
   return items.reduce(
     (sum, item) => sum + parseWeightKg(item.weight) * item.quantity,
     0,
