@@ -214,6 +214,8 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               weight: variant.weight,
               price: variant.price,
               wholesale_price: variant.wholesale_price ?? null,
+              packet_cost: variant.packet_cost ?? null,
+              sticker_cost: variant.sticker_cost ?? null,
               discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
               is_active: variant.is_active ?? true,
@@ -237,6 +239,8 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               weight: variant.weight,
               price: variant.price,
               wholesale_price: variant.wholesale_price ?? null,
+              packet_cost: variant.packet_cost ?? null,
+              sticker_cost: variant.sticker_cost ?? null,
               discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
             })
@@ -287,10 +291,13 @@ export const useProductStore = create<ProductState>()((set, get) => ({
 
     const fileExt = file.name.split(".").pop();
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `images/${fileName}`;
+    // The real bucket is "images" (confirmed against every existing
+    // product's stored image URL) — "products" doesn't exist, which is why
+    // every upload was failing.
+    const filePath = fileName;
 
     const { error: uploadError } = await supabase.storage
-      .from("products")
+      .from("images")
       .upload(filePath, file);
 
     if (uploadError) {
@@ -298,7 +305,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
       throw new Error(uploadError.message);
     }
 
-    const { data } = supabase.storage.from("products").getPublicUrl(filePath);
+    const { data } = supabase.storage.from("images").getPublicUrl(filePath);
 
     set({ isLoading: false });
     return data.publicUrl;

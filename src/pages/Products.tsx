@@ -30,6 +30,7 @@ import { getStockStatus } from "../utils/stockStatus";
 import { formatCurrency } from "../utils/currency";
 import { parseWeightKg } from "../utils/weight";
 import { displayNumber, parseNumberInput } from "../utils/number";
+import { getCostPrice } from "../utils/costPrice";
 
 type SortField =
   | "none"
@@ -108,6 +109,8 @@ const blankVariantRow = (sortOrder: number): ProductVariant => ({
   weight: "",
   price: 0,
   wholesale_price: 0,
+  packet_cost: 0,
+  sticker_cost: 0,
   discount_percent: 0,
   available_quantity: 0,
   low_stock_threshold: 5,
@@ -156,6 +159,8 @@ export default function Products() {
     description: "",
     price: 0,
     wholesale_price: 0,
+    packet_cost: 0,
+    sticker_cost: 0,
     images: [],
     category: "",
     origin: "",
@@ -184,6 +189,8 @@ export default function Products() {
         description: product.description,
         price: product.price,
         wholesale_price: product.wholesale_price || 0,
+        packet_cost: product.packet_cost || 0,
+        sticker_cost: product.sticker_cost || 0,
         images: Array.isArray(product.images)
           ? product.images
           : typeof product.images === "string" && product.images
@@ -858,7 +865,7 @@ export default function Products() {
                 />
               </div>
               <div className="form-group">
-                <label>Wholesale Price / Cost (₹)</label>
+                <label>Wholesale Price (₹)</label>
                 <input
                   type="number"
                   required
@@ -870,6 +877,48 @@ export default function Products() {
                     })
                   }
                 />
+              </div>
+              <div className="form-group">
+                <label>Packet Cost (₹)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={displayNumber(formData.packet_cost)}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      packet_cost: parseNumberInput(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Sticker Cost (₹)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={displayNumber(formData.sticker_cost)}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      sticker_cost: parseNumberInput(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Cost Price (₹)</label>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--radius-md)",
+                    fontWeight: 600,
+                  }}
+                >
+                  ₹{formatCurrency(getCostPrice(formData))}
+                </div>
               </div>
               <div className="form-group">
                 <label>Available Quantity</label>
@@ -1135,6 +1184,7 @@ export default function Products() {
                             display: "grid",
                             gridTemplateColumns: "1fr 1fr 1fr",
                             gap: "1rem",
+                            marginBottom: "1rem",
                           }}
                         >
                           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1152,6 +1202,61 @@ export default function Products() {
                                 })
                               }
                             />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Packet Cost (₹)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 5"
+                              min={0}
+                              value={displayNumber(variant.packet_cost)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  packet_cost: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Sticker Cost (₹)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 2"
+                              min={0}
+                              value={displayNumber(variant.sticker_cost)}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  sticker_cost: parseNumberInput(
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div
+                          className="responsive-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "1rem",
+                          }}
+                        >
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Cost Price (₹)</label>
+                            <div
+                              style={{
+                                padding: "12px 16px",
+                                background: "var(--bg-secondary)",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: "var(--radius-md)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              ₹{formatCurrency(getCostPrice(variant))}
+                            </div>
                           </div>
                           <div className="form-group" style={{ marginBottom: 0 }}>
                             <label>Stock Quantity</label>

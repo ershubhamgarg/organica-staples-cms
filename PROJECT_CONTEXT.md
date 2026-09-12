@@ -706,6 +706,62 @@ migrations too, and its variant-selection UI updated to price against
 `price * (1 - discount_percent / 100)` — out of scope here since this task only covers the CMS
 side.
 
+### Cost price breakdown: `packet_cost` / `sticker_cost`
+
+`wholesale_price` alone understated a product's true unit cost — it only ever captured the raw
+goods cost, not the per-unit packaging (`packet_cost`) or label (`sticker_cost`) spend. Both are
+now first-class fields, on both `products` (plain products) and `product_variants` (each pack
+size has its own packaging/label cost, since a 5 Kg bag and a 250 g pouch don't cost the same to
+package) — same two-tier pattern `discount_percent` above already established.
+`getCostPrice({wholesale_price, packet_cost, sticker_cost})` (`src/utils/costPrice.ts`) sums all
+three; the product form (`Products.tsx`) shows the two new inputs next to Wholesale Price (base
+product and, in the "Cost & Inventory" section, each variant row) plus a read-only **Cost Price**
+total that recomputes live as any of the three change. `productStore.ts`'s `addProduct`/
+`updateProduct` pass the base product's fields straight through to Supabase (no whitelist to
+update), but `replaceVariants`'s per-variant `.insert()`/`.update()` calls do explicitly list
+columns — both call sites there were updated to include `packet_cost`/`sticker_cost`.
+
+Confirmed live (same as the `discount_percent` check above) that neither column exists yet on
+either table — `GET /products?select=id,packet_cost` and `GET
+/product_variants?select=id,packet_cost` both return `column ... does not exist`. Run before
+using the new fields:
+
+```sql
+alter table public.products
+  add column if not exists packet_cost numeric default 0,
+  add column if not exists sticker_cost numeric default 0;
+
+alter table public.product_variants
+  add column if not exists packet_cost numeric default 0,
+  add column if not exists sticker_cost numeric default 0;
+```
+
+**Now wired into order-level margin** (as a same-session follow-up). `cost_to_company`/
+`profit_loss` on an order are *not* computed in `app/api/orders/route.ts` — `recomputeOrderPricing`
+there only re-derives customer-facing pricing (items subtotal, product/coupon discounts); the
+actual wholesale/CTC/profit math happens **inside Postgres**, in the
+`place_order_with_inventory` RPC (storefront migration
+`supabase/migrations/20260910010000_variant_aware_place_order.sql`), which
+`app/api/orders/route.ts` calls with just `{id, quantity, price, variant_id}` per item and looks
+up `wholesale_price` itself server-side — the correct trust boundary, since the client can't
+influence pricing by tampering with a request body field that's never read for this. The
+follow-up migration `supabase/migrations/20260912000000_packaging_cost_in_ctc.sql` (storefront
+repo) extends that same function: a new `v_packaging_total` accumulates
+`(coalesce(variant.packet_cost, product.packet_cost, 0) + coalesce(variant.sticker_cost,
+product.sticker_cost, 0)) * quantity` per line (same variant-falls-back-to-product `coalesce`
+pattern already used for `wholesale_price`), and `v_ctc` now adds it in:
+`v_wholesale_total + v_packaging_total + v_extra_shipping_cost + v_packing_charge +
+v_gateway_charge`. The pre-existing flat `v_packing_charge := 20` (an outer-shipment/box packing
+estimate) is left untouched and additive — it's a different cost than a product's own pouch +
+label, not a duplicate of it. Also added `order_items.packet_cost`/`sticker_cost` columns
+(migrated in the same file) and populated them per line, mirroring how `wholesale_price` is
+already captured there for auditability. Couldn't dry-run this migration against the live DB
+directly this session — the CMS's `.env.local` has `POSTGRES_URL`/`POSTGRES_URL_NON_POOLING`/
+`POSTGRES_PASSWORD` masked as literal `"[SENSITIVE]"` (a Vercel env-pull redaction), and there's
+no `exec_sql`-style RPC exposed via PostgREST — so this was verified by careful structural
+comparison against the already-live `20260910010000` version rather than an actual dry-run;
+run it in the Supabase SQL editor.
+
 ## Development Workflow
 - Run development server: `npm run dev`
 - Build for production: `npm run build`

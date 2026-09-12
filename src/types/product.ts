@@ -6,6 +6,10 @@ export interface ProductVariant {
   weight: string;
   price: number;
   wholesale_price?: number | null;
+  /** Packaging material cost for this specific pack size. */
+  packet_cost?: number | null;
+  /** Label/sticker cost for this specific pack size. */
+  sticker_cost?: number | null;
   /** 0-100. Applied to `price` to get what the customer actually pays. */
   discount_percent?: number | null;
   sku?: string | null;
@@ -23,6 +27,10 @@ export interface Product {
   description: string;
   price: number;
   wholesale_price?: number;
+  /** Packaging material cost — part of cost price alongside wholesale_price/sticker_cost. */
+  packet_cost?: number | null;
+  /** Label/sticker cost — part of cost price alongside wholesale_price/packet_cost. */
+  sticker_cost?: number | null;
   images?: string[] | string | null;
   category: string;
   origin: string;
