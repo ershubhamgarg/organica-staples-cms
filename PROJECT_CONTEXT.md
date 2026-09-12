@@ -592,6 +592,40 @@ endpoint for the same pattern (a narrow-selected row returned directly to the cl
 only ever return the full row from their final `.update().select().single()`, never their
 narrower initial read, so this was specific to `refund-status.ts`.
 
+**Production incident: a correctly-recorded refund got silently erased.** A real order
+(`f4697db5…`, payment `pay_TX74W8ludGyKQW`) was refunded ₹1021.10 directly on the Razorpay
+dashboard. The CMS's `.env.local` and `.env` disagreed on which Razorpay account to talk to —
+`.env.local` had the real `rzp_live_…` key (live mode, where this real payment actually lives);
+`.env` still had a leftover `rzp_test_…` key from before live credentials were configured. One
+check (using the correct live key) found the refund and wrote it in correctly; some later request
+— almost certainly served with the stale test key, since a test-mode key can't see a live-mode
+payment at all — ran the same check, got `getPaymentRefundState`'s `{items: []}` "nothing found"
+result (Razorpay's `/refunds` list endpoint doesn't error on an unrecognized ID, it just returns
+empty — see the live/test-mode incident above), and the endpoint's own logic treated that as a
+legitimate change, **overwriting the correct refund_status/refund_amount/razorpay_refund_id back
+to null**. Confirmed via `refund_checked_at` being freshly stamped while every other refund field
+sat at null — `refund_checked_at` is only ever written in the same branch as real refund data, so
+a later, different write must have nulled the rest back out afterward.
+
+**Fix — stop trusting "not found" as ground truth.** Razorpay has no un-refund operation, so a
+check reporting *less* refunded than what's already on record is far more likely to mean it ran
+against the wrong account/mode than a genuine reversal. `refund-status.ts` now refuses to write
+when `nextAmount < previousAmount` (returns `changed: false` with an explanatory message instead)
+— it can still record a *new* refund (`previousAmount` 0 → some amount) or a larger one, but can
+never erase or shrink what's already stored. This makes the endpoint fail safe against exactly
+this class of wrong-credential incident instead of amplifying it.
+
+**Immediate cleanup**: synced `.env`'s `RAZORPAY_KEY_ID`/`SECRET` to match `.env.local`'s live
+values (removing the inconsistency that caused this), and manually corrected `f4697db5…`'s row
+back to the verified live data (`refund_status: "processed"`, `refund_amount: 1021.10`,
+`razorpay_refund_id: "rfnd_Tak7uRTFDsvMgx"`, `refunded_at` from Razorpay's own refund timestamp)
+via the Supabase REST API with the service-role key, after re-verifying the refund against
+Razorpay directly beforehand. **Still open**: this only fixes the two local env files — the CMS's
+*deployed* Vercel project has its own, separate environment variable configuration that local
+`.env`/`.env.local` files never touch (see the Environment Setup section above); if that still
+has the old test-mode key, the deployed app will keep hitting this exact failure mode on every
+order until it's updated there too, in the Vercel dashboard.
+
 ### Cancelled shipment ≠ cancelled order
 
 **Bug**: a shipment getting cancelled at Shiprocket's end (RTO, a failed pickup, or a manual

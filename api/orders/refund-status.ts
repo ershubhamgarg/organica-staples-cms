@@ -103,8 +103,27 @@ export default async function handler(request: Request): Promise<Response> {
 
   const previousAmount = order.refund_amount ?? 0;
   const nextAmount = refundState.hasAnyRefund ? round2(refundState.amount ?? 0) : 0;
+
+  // Razorpay has no "un-refund" operation, so it reporting *less* refunded
+  // than what's already on record is far more likely to mean this check ran
+  // against the wrong Razorpay account/mode (e.g. a stale test-mode key
+  // somewhere while the real payment is live-mode) than a genuine reversal —
+  // refuse to regress the stored amount. This previously let a single
+  // wrong-credentialed check silently wipe out a correctly-recorded refund.
+  if (nextAmount < previousAmount) {
+    return json({
+      order,
+      refund: {
+        attempted: true,
+        changed: false,
+        message:
+          "Razorpay reported a lower refunded amount than already on record — ignored as a likely credential/mode mismatch rather than applied.",
+      },
+    });
+  }
+
   const changed =
-    Math.abs(nextAmount - previousAmount) >= 0.01 ||
+    nextAmount !== previousAmount ||
     (refundState.status ?? null) !== (order.refund_status ?? null) ||
     (refundState.refundId ?? null) !== (order.razorpay_refund_id ?? null);
 
