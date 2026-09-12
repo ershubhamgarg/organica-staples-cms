@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Upload, X, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ImageUploadProps {
   images: string[];
@@ -83,6 +83,20 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     onChange(newImages);
   };
 
+  // The first image is the product's thumbnail everywhere it's listed (see
+  // getProductThumbnail) — reordering exists specifically so admins can pick
+  // which upload becomes that thumbnail without deleting and re-uploading.
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= images.length) return;
+    const newImages = [...images];
+    [newImages[index], newImages[targetIndex]] = [
+      newImages[targetIndex],
+      newImages[index],
+    ];
+    onChange(newImages);
+  };
+
   return (
     <div className="form-group" style={{ gridColumn: "span 2" }}>
       <label>
@@ -99,7 +113,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       >
         {images.map((url, index) => (
           <div
-            key={index}
+            key={url}
             style={{
               position: "relative",
               width: "100px",
@@ -114,6 +128,23 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               alt={`Product ${index + 1}`}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
+            {index === 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: "4px",
+                  left: "4px",
+                  background: "rgba(0, 0, 0, 0.65)",
+                  color: "white",
+                  fontSize: "0.6rem",
+                  fontWeight: 600,
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                }}
+              >
+                Primary
+              </span>
+            )}
             <button
               type="button"
               onClick={() => removeImage(index)}
@@ -135,6 +166,61 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             >
               <X size={12} />
             </button>
+            {images.length > 1 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "4px",
+                  left: "4px",
+                  display: "flex",
+                  gap: "2px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => moveImage(index, -1)}
+                  disabled={index === 0}
+                  title="Move earlier"
+                  style={{
+                    background: "rgba(0, 0, 0, 0.55)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "20px",
+                    height: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: index === 0 ? "default" : "pointer",
+                    opacity: index === 0 ? 0.35 : 1,
+                  }}
+                >
+                  <ChevronLeft size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveImage(index, 1)}
+                  disabled={index === images.length - 1}
+                  title="Move later"
+                  style={{
+                    background: "rgba(0, 0, 0, 0.55)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "20px",
+                    height: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor:
+                      index === images.length - 1 ? "default" : "pointer",
+                    opacity: index === images.length - 1 ? 0.35 : 1,
+                  }}
+                >
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
 
