@@ -81,6 +81,7 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 9c. **Refund Reconciliation:** Every time the order detail page loads, it silently re-checks Razorpay's own refund record for that payment and corrects the stored refund status/amount if a refund was issued directly on the Razorpay dashboard rather than through this app. See below and `api/orders/refund-status.ts`.
 10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link, and — once a courier is actually assigned — corrects the order's margin from Shiprocket's real freight charge. See below for details, and `api/orders/sync-shipping.ts`.
 11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
+12. **Order Remarks:** A collapsible section on the order detail page for free-form, timestamped admin notes on an order — e.g. logging that a feature didn't behave as expected, or a note from a customer call. See below for details.
 
 ## Environment Setup
 Required variables in `.env` (client-side, Vite-exposed):
@@ -795,6 +796,56 @@ directly this session — the CMS's `.env.local` has `POSTGRES_URL`/`POSTGRES_UR
 no `exec_sql`-style RPC exposed via PostgREST — so this was verified by careful structural
 comparison against the already-live `20260910010000` version rather than an actual dry-run;
 run it in the Supabase SQL editor.
+
+### Order Remarks (`OrderDetails.tsx`)
+
+A collapsible "Remarks" card on the order detail page for free-form, timestamped admin notes —
+the specific use case that prompted it: logging when a feature didn't behave as expected on a
+given order (an AWB sync failure, a manual workaround, a customer call), so there's a durable
+record attached to that order rather than tribal knowledge. Stored as an **append-only JSONB
+array** directly on `orders.remarks` (`{text, created_at}[]`, newest last) rather than a separate
+table — consistent with how `items`/`delivery_address`/`payment_details` are already stored as
+JSONB on the same row, and there's no need for independent RLS or pagination at this scale.
+
+**Placement, and a layout bug fixed along the way**: originally placed as its own full-width card
+*below* the page's 2-column grid (`gridTemplateColumns: "2fr 1fr"`). That grid's two columns are
+very unequal in height — the left (Order Items + Profit Analysis) is much taller than the right
+(Delivery Address, Payment Info, Shipping & Logistics) — and a full-width Remarks section below
+the grid only ever starts at the bottom of the *taller* column, no matter what. The first attempt
+at a fix added `alignItems: "start"` to the grid (still correct/kept — without it, grid's default
+`stretch` forces the shorter right column's div to the taller column's height, which is a real
+but *separate* bug), but that alone didn't touch the actual complaint: a large empty gap under the
+right column's last card before the full-width Remarks section began, since Remarks lived outside
+both columns entirely. **Fixed by moving Remarks to live inside the right column itself**, as
+another card directly after "Shipping & Logistics" — it now fills that space naturally as part of
+the shorter column's own stack instead of floating below the whole grid, which eliminates the gap
+structurally rather than fighting it with spacing tweaks.
+
+```sql
+alter table public.orders
+  add column if not exists remarks jsonb not null default '[]'::jsonb;
+```
+
+**`addOrderRemark(id, text)`** (`orderStore.ts`) re-reads `remarks` fresh from Supabase
+immediately before appending and writing back, rather than trusting whatever's already in the
+local store — cheap insurance against two remarks added in quick succession (two admins, or two
+browser tabs) silently clobbering each other via a stale in-memory array, since there's no atomic
+JSONB-append RPC backing this (a plain read-modify-write, same rigor as the rest of this simple
+admin CRUD, not the stock-race-sensitive `place_order_with_inventory` path).
+
+**UI**: defaults collapsed for an order with no remarks yet, auto-expands if any already exist so
+one is never missed behind a closed section. Existing remarks render newest-first
+(`[...order.remarks].reverse()`) above the input, each in its own `card-subsection` with a small
+`Clock` icon + `formatDateTime(created_at)` and the note text — a comment-thread-style layout
+(history first, composer below), capped at `maxHeight: 320px` with its own scroll so a long
+history doesn't keep growing the card (and by extension the whole right column) indefinitely. The
+"New Remark" textarea + right-aligned "Add Remark" button sit below the list, matching the same
+labeled-textarea-then-button pattern already used by the Cancel Order / Reject Order modals. The
+header shows a count badge once there's at least one remark. `Orders.tsx`'s list also gets a small
+`MessageSquare` icon next to the Order ID (with a `data-tooltip` showing the count) when
+`remarks.length > 0`, so an order with notes on it is visible without opening its detail page —
+matching "should be properly visible with each order" from the original request, not just
+discoverable one click away.
 
 ## Development Workflow
 - Run development server: `npm run dev`

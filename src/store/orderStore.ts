@@ -110,7 +110,15 @@ export interface Order {
   refund_amount?: number | null;
   refunded_at?: string | null;
   refund_checked_at?: string | null;
+  /** Free-form, timestamped admin notes — e.g. "AWB sync failed, called
+   * Shiprocket support at 3pm" — append-only, newest last. */
+  remarks?: OrderRemark[] | null;
 }
+
+export type OrderRemark = {
+  text: string;
+  created_at: string;
+};
 
 export type RefundMode = "full" | "partial" | "none";
 
@@ -182,6 +190,7 @@ interface OrderState {
     rejectionReason?: string,
   ) => Promise<void>;
   getOrderById: (id: string) => Promise<Order | null>;
+  addOrderRemark: (id: string, text: string) => Promise<Order>;
   cancelOrderWithRefund: (
     id: string,
     input: { reason: string; refund: { mode: RefundMode; amount?: number } },
@@ -283,6 +292,49 @@ export const useOrderStore = create<OrderState>()((set) => ({
       console.error("Error fetching order:", error);
       return null;
     }
+
+    return data;
+  },
+
+  addOrderRemark: async (id, text) => {
+    set({ isLoading: true, error: null });
+
+    // Reads fresh from the DB rather than trusting whatever's in the local
+    // store, so two remarks added in quick succession (e.g. two admins, or
+    // two tabs) both land instead of the second silently clobbering the
+    // first via a stale in-memory array.
+    const { data: existing, error: fetchError } = await supabase
+      .from("orders")
+      .select("remarks")
+      .eq("id", id)
+      .single();
+
+    if (fetchError) {
+      set({ error: fetchError.message, isLoading: false });
+      throw new Error(fetchError.message);
+    }
+
+    const nextRemarks: OrderRemark[] = [
+      ...((existing?.remarks as OrderRemark[] | null) ?? []),
+      { text, created_at: new Date().toISOString() },
+    ];
+
+    const { data, error } = await supabase
+      .from("orders")
+      .update({ remarks: nextRemarks })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      set({ error: error.message, isLoading: false });
+      throw new Error(error.message);
+    }
+
+    set((state) => ({
+      orders: state.orders.map((o) => (o.id === id ? data : o)),
+      isLoading: false,
+    }));
 
     return data;
   },

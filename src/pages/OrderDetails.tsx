@@ -16,6 +16,10 @@ import {
   Weight,
   Download,
   IndianRupee,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  Clock,
 } from "lucide-react";
 import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
 import { supabase } from "../utils/supabase";
@@ -47,6 +51,7 @@ export default function OrderDetails() {
   );
   const refundOrder = useOrderStore((state) => state.refundOrder);
   const checkRefundStatus = useOrderStore((state) => state.checkRefundStatus);
+  const addOrderRemark = useOrderStore((state) => state.addOrderRemark);
   const syncShippingDetails = useOrderStore(
     (state) => state.syncShippingDetails,
   );
@@ -72,6 +77,9 @@ export default function OrderDetails() {
   const [standaloneRefundAmount, setStandaloneRefundAmount] = useState(0);
   const [standaloneRefundReason, setStandaloneRefundReason] = useState("");
   const [isRefunding, setIsRefunding] = useState(false);
+  const [showRemarks, setShowRemarks] = useState(false);
+  const [newRemarkText, setNewRemarkText] = useState("");
+  const [isAddingRemark, setIsAddingRemark] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -81,6 +89,9 @@ export default function OrderDetails() {
     getOrderById(id).then((fetchedOrder) => {
       if (cancelled) return;
       setOrder(fetchedOrder);
+      // Auto-expand so an existing remark isn't missed behind a collapsed
+      // section — a fresh order with none stays collapsed by default.
+      setShowRemarks(Boolean(fetchedOrder?.remarks?.length));
 
       // Shiprocket status can change between visits (in transit, delivered,
       // etc.) — pull the latest the moment the page opens rather than
@@ -293,6 +304,23 @@ export default function OrderDetails() {
       );
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleAddRemark = async () => {
+    if (!id || !newRemarkText.trim()) return;
+
+    try {
+      setIsAddingRemark(true);
+      const updatedOrder = await addOrderRemark(id, newRemarkText.trim());
+      setOrder(updatedOrder);
+      setNewRemarkText("");
+      toast.success("Remark added.");
+    } catch (err) {
+      console.error("Failed to add remark:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to add remark.");
+    } finally {
+      setIsAddingRemark(false);
     }
   };
 
@@ -635,7 +663,16 @@ export default function OrderDetails() {
 
       <div
         className="responsive-grid"
-        style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "2rem" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr",
+          gap: "2rem",
+          // Without this, grid's default `stretch` forces the shorter
+          // right column (Delivery/Payment/Shipping cards) to match the
+          // taller left column's height, leaving a large blank gap at its
+          // bottom — directly above the Remarks section that follows.
+          alignItems: "start",
+        }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {/* Order Items */}
@@ -1419,6 +1456,132 @@ export default function OrderDetails() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Remarks */}
+          <div className="card" style={{ padding: "1.5rem" }}>
+            <button
+              type="button"
+              onClick={() => setShowRemarks((v) => !v)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                color: "inherit",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <MessageSquare size={20} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: "1.1rem" }}>Remarks</h3>
+                {(order.remarks?.length ?? 0) > 0 && (
+                  <span className="badge badge-secondary">
+                    {order.remarks!.length}
+                  </span>
+                )}
+              </div>
+              {showRemarks ? (
+                <ChevronDown size={18} color="var(--text-secondary)" />
+              ) : (
+                <ChevronRight size={18} color="var(--text-secondary)" />
+              )}
+            </button>
+
+            {showRemarks && (
+              <div
+                style={{
+                  marginTop: "1.25rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1.25rem",
+                }}
+              >
+                {order.remarks && order.remarks.length > 0 ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      maxHeight: "320px",
+                      overflowY: "auto",
+                      paddingRight: "2px",
+                    }}
+                  >
+                    {[...order.remarks]
+                      .reverse()
+                      .map((remark, index) => (
+                        <div
+                          key={`${remark.created_at}-${index}`}
+                          className="card-subsection"
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "0.75rem",
+                              color: "var(--text-secondary)",
+                              marginBottom: "6px",
+                            }}
+                          >
+                            <Clock size={12} />
+                            {formatDateTime(remark.created_at)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.9rem",
+                              whiteSpace: "pre-wrap",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {remark.text}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "var(--text-secondary)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    No remarks yet — add a note below if something needs
+                    flagging on this order.
+                  </div>
+                )}
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>New Remark</label>
+                  <textarea
+                    value={newRemarkText}
+                    onChange={(e) => setNewRemarkText(e.target.value)}
+                    placeholder="e.g. Customer called about a delayed delivery — assured a refund by Friday if not resolved."
+                    style={{ minHeight: "70px" }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: "0.75rem",
+                    }}
+                  >
+                    <Button
+                      onClick={handleAddRemark}
+                      loading={isAddingRemark}
+                      disabled={!newRemarkText.trim()}
+                    >
+                      Add Remark
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

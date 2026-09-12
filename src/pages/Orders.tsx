@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowUp,
   ArrowDown,
+  MessageSquare,
 } from "lucide-react";
 import { useOrderStore, type Order } from "../store/orderStore";
 import PageHeader from "../components/ui/PageHeader";
@@ -226,6 +227,13 @@ export default function Orders() {
                         >
                           #ORD-{order.id.slice(0, 8).toUpperCase()}
                           <CopyButton value={order.id} label="Order ID" />
+                          {(order.remarks?.length ?? 0) > 0 && (
+                            <MessageSquare
+                              size={13}
+                              color="var(--text-secondary)"
+                              data-tooltip={`${order.remarks!.length} remark${order.remarks!.length > 1 ? "s" : ""}`}
+                            />
+                          )}
                         </div>
                       </td>
                       <td style={{ padding: "16px" }}>
