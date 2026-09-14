@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowUp,
   ArrowDown,
+  Gift,
   MessageSquare,
 } from "lucide-react";
 import { useOrderStore, type Order } from "../store/orderStore";
@@ -19,6 +20,7 @@ import IconButton from "../components/ui/IconButton";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { isLocalOrder } from "../utils/localOrder";
+import { isCollabOrder } from "../utils/collabOrder";
 import { getUnifiedOrderStatus } from "../utils/shippingStatus";
 
 type SortField =
@@ -269,7 +271,27 @@ export default function Orders() {
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
                       <td style={{ padding: "16px", fontWeight: 600 }}>
-                        ₹{formatCurrency(order.total_amount)}
+                        {isCollabOrder(order) ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            ₹{formatCurrency(order.total_amount)}
+                            <span
+                              className="badge badge-info"
+                              style={{ gap: "4px" }}
+                              data-tooltip="Barter collaboration — nothing charged, product cost is marketing spend"
+                            >
+                              <Gift size={12} />
+                              Collab
+                            </span>
+                          </span>
+                        ) : (
+                          <>₹{formatCurrency(order.total_amount)}</>
+                        )}
                       </td>
                       <td style={{ padding: "16px" }}>
                         <span

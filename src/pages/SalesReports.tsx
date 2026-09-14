@@ -18,6 +18,7 @@ import {
   downloadCSV,
 } from "../utils/salesReport";
 import { SELLER, computeGstSummary, computeOrderTax } from "../utils/gst";
+import { formatPaymentMethodLabel } from "../utils/collabOrder";
 
 const presetOptions: { value: DatePreset; label: string }[] = [
   { value: "today", label: "Today" },
@@ -357,7 +358,20 @@ export default function SalesReports() {
             <StatCard
               label="Avg Order Value"
               value={`₹${formatCurrency(summary.avgOrderValue)}`}
+              sub={
+                summary.collabOrders > 0
+                  ? "excludes collab orders"
+                  : undefined
+              }
             />
+            {summary.collabOrders > 0 && (
+              <StatCard
+                label="Collab Orders"
+                value={String(summary.collabOrders)}
+                sub={`₹${formatCurrency(summary.collabCost)} cost absorbed`}
+                color="var(--warning)"
+              />
+            )}
             <StatCard
               label="Refunds"
               value={`₹${formatCurrency(summary.refundedAmount)}`}
@@ -426,6 +440,32 @@ export default function SalesReports() {
                 value={`${gstSummary.intraStateOrders} / ${gstSummary.interStateOrders}`}
               />
             </div>
+
+            {summary.collabOrders > 0 && (
+              <div
+                style={{
+                  marginBottom: "1.5rem",
+                  padding: "12px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)",
+                  fontSize: "0.8rem",
+                  color: "var(--text-secondary)",
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong style={{ color: "var(--text-primary)" }}>
+                  Note:
+                </strong>{" "}
+                {summary.collabOrders} barter/collaboration order
+                {summary.collabOrders === 1 ? "" : "s"} in this period are
+                included above at full product value, even though nothing was
+                charged. Whether a barter supply is taxable at open market
+                value or treated as a free sample with ITC reversal depends on
+                how the arrangement is characterised — confirm the treatment
+                with your accountant.
+              </div>
+            )}
 
             <div
               className="responsive-grid"
@@ -818,8 +858,8 @@ export default function SalesReports() {
                         <td style={{ padding: "8px 12px", fontWeight: 500 }}>
                           ₹{formatCurrency(order.total_amount)}
                         </td>
-                        <td style={{ padding: "8px 12px", textTransform: "uppercase" }}>
-                          {order.payment_method}
+                        <td style={{ padding: "8px 12px" }}>
+                          {formatPaymentMethodLabel(order.payment_method)}
                         </td>
                         <td style={{ padding: "8px 12px" }}>
                           <span

@@ -9,6 +9,13 @@ export interface Coupon {
   is_public: boolean;
   min_order_value: number | null;
   valid_upto: string | null;
+  /** Null = unlimited uses. */
+  max_redemptions: number | null;
+  /** Incremented by place_order_with_inventory — read-only here. */
+  redemption_count?: number;
+  /** Waives shipping/convenience/COD fees too, so the order costs ₹0. */
+  is_free_order: boolean;
+  requires_login: boolean;
   created_at?: string;
 }
 

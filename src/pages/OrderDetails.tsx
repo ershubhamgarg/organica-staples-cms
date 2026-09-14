@@ -35,6 +35,10 @@ import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { formatDateTime } from "../utils/date";
 import { displayNumber, parseNumberInput } from "../utils/number";
 import { isLocalOrder } from "../utils/localOrder";
+import {
+  formatPaymentMethodLabel,
+  isCollabOrder,
+} from "../utils/collabOrder";
 import { getShippingStatusColor, formatShippingStatusLabel } from "../utils/shippingStatus";
 
 const canRefundOrder = (order: Order) =>
@@ -1232,8 +1236,22 @@ export default function OrderDetails() {
                 <InfoRow
                   label="Method"
                   value={
-                    <span style={{ textTransform: "uppercase" }}>
-                      {order.payment_method}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {formatPaymentMethodLabel(order.payment_method)}
+                      {isCollabOrder(order) && (
+                        <span
+                          className="badge badge-info"
+                          data-tooltip="Barter collaboration — nothing charged, product cost is marketing spend"
+                        >
+                          No Payment Due
+                        </span>
+                      )}
                     </span>
                   }
                 />

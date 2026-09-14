@@ -22,6 +22,9 @@ const blankCoupon: Coupon = {
   is_public: true,
   min_order_value: null,
   valid_upto: null,
+  max_redemptions: null,
+  is_free_order: false,
+  requires_login: false,
 };
 
 function toDateInputValue(iso: string | null): string {
@@ -69,8 +72,17 @@ export default function Coupons() {
     e.preventDefault();
     try {
       setIsSaving(true);
+      // redemption_count is a live counter maintained by the order-placement
+      // RPC — never write a (possibly stale) value back over it.
+      const {
+        redemption_count: _redemptionCount,
+        created_at: _createdAt,
+        ...editableFields
+      } = formData;
+      void _redemptionCount;
+      void _createdAt;
       const payload: Coupon = {
-        ...formData,
+        ...editableFields,
         code: formData.code.trim().toUpperCase(),
         valid_upto: formData.valid_upto
           ? new Date(formData.valid_upto).toISOString()
@@ -148,6 +160,7 @@ export default function Coupons() {
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>
                     Valid Upto
                   </th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>Uses</th>
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>Status</th>
                   <th
                     style={{
@@ -201,6 +214,11 @@ export default function Coupons() {
                         : "No expiry"}
                     </td>
                     <td style={{ padding: "16px" }}>
+                      {coupon.max_redemptions != null
+                        ? `${coupon.redemption_count ?? 0} / ${coupon.max_redemptions}`
+                        : `${coupon.redemption_count ?? 0} / ∞`}
+                    </td>
+                    <td style={{ padding: "16px" }}>
                       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <span
                           className={`badge badge-${coupon.is_active ? "success" : "secondary"}`}
@@ -210,6 +228,14 @@ export default function Coupons() {
                         {!coupon.is_public && (
                           <span className="badge badge-warning">Private</span>
                         )}
+                        {coupon.is_free_order && (
+                          <span className="badge badge-info">Free Order</span>
+                        )}
+                        {coupon.max_redemptions != null &&
+                          (coupon.redemption_count ?? 0) >=
+                            coupon.max_redemptions && (
+                            <span className="badge badge-danger">Used Up</span>
+                          )}
                       </div>
                     </td>
                     <td style={{ padding: "16px", textAlign: "right" }}>
@@ -320,7 +346,7 @@ export default function Coupons() {
                   }
                 />
               </div>
-              <div className="form-group" style={{ gridColumn: "span 2" }}>
+              <div className="form-group">
                 <label>Valid Upto</label>
                 <input
                   type="date"
@@ -329,6 +355,28 @@ export default function Coupons() {
                     setFormData({ ...formData, valid_upto: e.target.value })
                   }
                 />
+              </div>
+              <div className="form-group">
+                <label>Max Uses</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={formData.max_redemptions ?? ""}
+                  placeholder="Unlimited"
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      max_redemptions: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                />
+                {editingCode && (
+                  <small style={{ color: "var(--text-secondary)" }}>
+                    Used {formData.redemption_count ?? 0} time(s) so far.
+                  </small>
+                )}
               </div>
               <div className="form-group">
                 <label
@@ -374,6 +422,52 @@ export default function Coupons() {
                     style={{ width: "auto" }}
                   />
                   Public (listed to customers)
+                </label>
+              </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.is_free_order}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        is_free_order: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Free order (waives shipping &amp; fees)
+                </label>
+              </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.requires_login}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        requires_login: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Requires sign-in
                 </label>
               </div>
             </div>

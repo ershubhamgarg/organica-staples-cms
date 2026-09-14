@@ -1,6 +1,7 @@
 import type { Order } from "../store/orderStore";
 import { getOrderGrossWeightKg } from "./weight";
 import { computeOrderTax } from "./gst";
+import { formatPaymentMethodLabel, isCollabOrder } from "./collabOrder";
 
 export type DatePreset =
   | "today"
@@ -148,6 +149,10 @@ export interface SalesSummary {
   refundedCount: number;
   totalItemsSold: number;
   totalWeightKg: number;
+  /** Barter/collaboration orders — goods shipped, nothing charged. */
+  collabOrders: number;
+  /** Cost absorbed on those orders (marketing spend, not lost sales). */
+  collabCost: number;
   paymentMethodBreakdown: Record<string, { count: number; amount: number }>;
   statusBreakdown: Record<string, number>;
   topProducts: ProductSalesRow[];
@@ -172,12 +177,19 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
   let totalProfit = 0;
   let totalItemsSold = 0;
   let totalWeightKg = 0;
+  let collabOrders = 0;
+  let collabCost = 0;
 
   for (const order of orders) {
     statusBreakdown[order.status] = (statusBreakdown[order.status] ?? 0) + 1;
   }
 
   for (const order of activeOrders) {
+    if (isCollabOrder(order)) {
+      collabOrders += 1;
+      collabCost += order.cost_to_company ?? 0;
+    }
+
     grossRevenue += order.subtotal_amount ?? 0;
     totalDiscount +=
       order.discount_amount ??
@@ -191,7 +203,7 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     totalProfit += order.profit_loss ?? 0;
     totalWeightKg += getOrderGrossWeightKg(order.items ?? []);
 
-    const method = order.payment_method || "unknown";
+    const method = formatPaymentMethodLabel(order.payment_method);
     if (!paymentMethodBreakdown[method]) {
       paymentMethodBreakdown[method] = { count: 0, amount: 0 };
     }
@@ -244,13 +256,19 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     codCharges: round2(codCharges),
     wholesaleCost: round2(wholesaleCost),
     totalProfit: round2(totalProfit),
-    avgOrderValue: activeOrders.length
-      ? round2(netRevenue / activeOrders.length)
-      : 0,
+    // Barter orders are excluded from the denominator — they're ₹0 by
+    // design, so counting them would drag the average toward zero and make
+    // it read as a drop in order value rather than marketing activity.
+    avgOrderValue:
+      activeOrders.length - collabOrders > 0
+        ? round2(netRevenue / (activeOrders.length - collabOrders))
+        : 0,
     refundedAmount: round2(refundedAmount),
     refundedCount: refundedOrders.length,
     totalItemsSold,
     totalWeightKg,
+    collabOrders,
+    collabCost: round2(collabCost),
     paymentMethodBreakdown,
     statusBreakdown,
     topProducts,
@@ -391,7 +409,7 @@ export function ordersToCSV(orders: Order[]): string {
       tax.intraState ? "Intra-State (CGST+SGST)" : "Inter-State (IGST)",
       order.wholesale_total_amount ?? 0,
       order.profit_loss ?? 0,
-      order.payment_method ?? "",
+      formatPaymentMethodLabel(order.payment_method),
       order.payment_details?.status ?? "",
       order.status,
       order.shipping_status ?? "",
