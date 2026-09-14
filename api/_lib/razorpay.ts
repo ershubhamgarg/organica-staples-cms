@@ -1,5 +1,99 @@
 const RAZORPAY_API_BASE = "https://api.razorpay.com/v1";
 
+export type PaymentDetailsLookup = {
+  attempted: boolean;
+  success: boolean;
+  message: string | null;
+  id: string | null;
+  status: string | null;
+  amount: number | null;
+  currency: string | null;
+  method: string | null;
+  razorpayOrderId: string | null;
+  createdAt: string | null;
+};
+
+/**
+ * Looks up a single payment directly by ID — used to attach a repayment to
+ * an order after a mistaken refund (see api/orders/sync-payment.ts). Unlike
+ * the original checkout flow (which trusts a client-supplied signature),
+ * this confirms the payment directly with Razorpay, which is the stronger
+ * guarantee.
+ */
+export async function getPaymentDetails(
+  paymentId: string,
+): Promise<PaymentDetailsLookup> {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    return {
+      attempted: true,
+      success: false,
+      message: "Razorpay credentials are not configured.",
+      id: null,
+      status: null,
+      amount: null,
+      currency: null,
+      method: null,
+      razorpayOrderId: null,
+      createdAt: null,
+    };
+  }
+
+  try {
+    const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
+    const response = await fetch(
+      `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}`,
+      { headers: { Authorization: authHeader } },
+    );
+    const result = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      status?: string;
+      amount?: number;
+      currency?: string;
+      method?: string;
+      order_id?: string;
+      created_at?: number;
+      error?: { description?: string };
+    };
+
+    if (!response.ok) {
+      throw new Error(
+        result.error?.description ?? `Razorpay payment lookup failed (${response.status}).`,
+      );
+    }
+
+    return {
+      attempted: true,
+      success: true,
+      message: null,
+      id: result.id ?? null,
+      status: result.status ?? null,
+      amount: typeof result.amount === "number" ? result.amount / 100 : null,
+      currency: result.currency ?? null,
+      method: result.method ?? null,
+      razorpayOrderId: result.order_id ?? null,
+      createdAt: result.created_at
+        ? new Date(result.created_at * 1000).toISOString()
+        : null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      success: false,
+      message: error instanceof Error ? error.message : "Razorpay payment lookup failed.",
+      id: null,
+      status: null,
+      amount: null,
+      currency: null,
+      method: null,
+      razorpayOrderId: null,
+      createdAt: null,
+    };
+  }
+}
+
 export type PaymentRefundState = {
   attempted: boolean;
   success: boolean;

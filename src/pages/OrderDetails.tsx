@@ -55,6 +55,9 @@ export default function OrderDetails() {
   const syncShippingDetails = useOrderStore(
     (state) => state.syncShippingDetails,
   );
+  const syncPaymentDetails = useOrderStore(
+    (state) => state.syncPaymentDetails,
+  );
   const [order, setOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
@@ -80,6 +83,9 @@ export default function OrderDetails() {
   const [showRemarks, setShowRemarks] = useState(false);
   const [newRemarkText, setNewRemarkText] = useState("");
   const [isAddingRemark, setIsAddingRemark] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [syncPaymentId, setSyncPaymentId] = useState("");
+  const [isSyncingPayment, setIsSyncingPayment] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -321,6 +327,48 @@ export default function OrderDetails() {
       toast.error(err instanceof Error ? err.message : "Failed to add remark.");
     } finally {
       setIsAddingRemark(false);
+    }
+  };
+
+  const handleOpenPaymentModal = () => {
+    setSyncPaymentId("");
+    setShowPaymentModal(true);
+  };
+
+  const handleConfirmSyncPayment = async () => {
+    if (!id || !syncPaymentId.trim()) return;
+
+    try {
+      setIsSyncingPayment(true);
+      const result = await syncPaymentDetails(id, {
+        paymentId: syncPaymentId.trim(),
+      });
+
+      setOrder(result.order);
+      setShowPaymentModal(false);
+      setSyncPaymentId("");
+
+      const amountText =
+        result.payment.amount != null
+          ? `₹${formatCurrency(result.payment.amount)}`
+          : "payment";
+      toast.success(
+        result.reopened
+          ? `Payment updated (${amountText} verified) — order reopened to Processing.`
+          : `Payment updated — ${amountText} verified.`,
+      );
+      if (result.payment.amountMismatch) {
+        toast.error(
+          `Heads up — this payment's amount doesn't match the order total (₹${formatCurrency(order?.total_amount ?? 0)}).`,
+        );
+      }
+    } catch (err) {
+      console.error("Failed to update payment details:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update payment details.",
+      );
+    } finally {
+      setIsSyncingPayment(false);
     }
   };
 
@@ -1152,12 +1200,23 @@ export default function OrderDetails() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "10px",
+                justifyContent: "space-between",
                 marginBottom: "1.5rem",
               }}
             >
-              <CreditCard size={20} color="var(--accent-primary)" />
-              <h3 style={{ fontSize: "1.1rem" }}>Payment Information</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <CreditCard size={20} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: "1.1rem" }}>Payment Information</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<RefreshCcw size={14} />}
+                onClick={handleOpenPaymentModal}
+                style={{ color: "var(--accent-primary)" }}
+              >
+                Update
+              </Button>
             </div>
             <div
               style={{
@@ -1893,6 +1952,66 @@ export default function OrderDetails() {
               onClick={handleConfirmSyncShipping}
             >
               Save & Sync
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Update Payment Details Modal */}
+      {showPaymentModal && (
+        <Modal
+          onClose={() => setShowPaymentModal(false)}
+          title="Update Payment Details"
+          icon={<CreditCard size={20} />}
+          iconColor="var(--accent-primary)"
+          maxWidth="440px"
+          closeDisabled={isSyncingPayment}
+        >
+          <p
+            style={{
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
+            }}
+          >
+            Use this when a customer has re-paid after a refund (accidental
+            or otherwise). Enter the Razorpay Payment ID for the new
+            payment — it's verified directly with Razorpay, then attached to
+            this order and any prior refund status is cleared.
+          </p>
+
+          <div className="form-group">
+            <label>Razorpay Payment ID</label>
+            <input
+              type="text"
+              autoFocus
+              value={syncPaymentId}
+              onChange={(e) => setSyncPaymentId(e.target.value)}
+              placeholder="e.g. pay_QWERtyuiop1234"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => setShowPaymentModal(false)}
+              disabled={isSyncingPayment}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!syncPaymentId.trim()}
+              loading={isSyncingPayment}
+              onClick={handleConfirmSyncPayment}
+            >
+              Verify & Update
             </Button>
           </div>
         </Modal>

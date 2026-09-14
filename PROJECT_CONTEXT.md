@@ -82,6 +82,7 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 10. **Update Shipping Details:** Manually attach/fix a Shiprocket Order ID, Shipment ID, and/or AWB Code on an order when automatic sync failed — an AWB Code auto-fetches courier name, status, and tracking link, and — once a courier is actually assigned — corrects the order's margin from Shiprocket's real freight charge. See below for details, and `api/orders/sync-shipping.ts`.
 11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
 12. **Order Remarks:** A collapsible section on the order detail page for free-form, timestamped admin notes on an order — e.g. logging that a feature didn't behave as expected, or a note from a customer call. See below for details.
+13. **Update Payment Details:** Attach a new Razorpay payment to an order by Payment ID — for when a refund was issued by mistake and the customer re-paid. Verifies the payment directly with Razorpay, clears the now-superseded refund status, and reopens the order if it had been cancelled. See below and `api/orders/sync-payment.ts`.
 
 ## Environment Setup
 Required variables in `.env` (client-side, Vite-exposed):
@@ -89,7 +90,7 @@ Required variables in `.env` (client-side, Vite-exposed):
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous/public key.
 
 ### Server-only variables (Vercel project settings, never in `.env`/client code)
-Required for `api/orders/cancel.ts`, `api/orders/refund.ts`, `api/orders/refund-status.ts`, and `api/orders/sync-shipping.ts` (Vercel Edge Functions
+Required for `api/orders/cancel.ts`, `api/orders/refund.ts`, `api/orders/refund-status.ts`, `api/orders/sync-payment.ts`, and `api/orders/sync-shipping.ts` (Vercel Edge Functions
 under `api/`). Add these in the CMS's own Vercel project — copy the values from the
 storefront's Vercel project, where they already exist:
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`: for issuing refunds.
@@ -796,6 +797,53 @@ directly this session — the CMS's `.env.local` has `POSTGRES_URL`/`POSTGRES_UR
 no `exec_sql`-style RPC exposed via PostgREST — so this was verified by careful structural
 comparison against the already-live `20260910010000` version rather than an actual dry-run;
 run it in the Supabase SQL editor.
+
+### Update Payment Details (`api/orders/sync-payment.ts`)
+
+Handles a specific real scenario: an order gets refunded by mistake (or a legitimate refund is
+later reversed by the customer paying again outside the normal checkout — a bank transfer
+followed by a "proper" Razorpay payment, a payment link, etc.), and the admin needs to attach that
+new payment to the order. Modeled directly on "Update Shipping Details"
+(`api/orders/sync-shipping.ts`) — same idea, different identifier: instead of an AWB Code, the
+admin enters a **Razorpay Payment ID**, and the endpoint looks it up and attaches it.
+
+**`getPaymentDetails(paymentId)`** (`api/_lib/razorpay.ts`) — `GET /payments/:id`, parsed the same
+way `refundRazorpayPayment`/`getPaymentRefundState` already parse Razorpay responses in this file.
+Response shape (`id`, `amount`, `status`, `method`, `order_id`, `created_at`) confirmed live
+earlier this session against a real payment (`pay_TX74W8ludGyKQW`), so no separate verification
+call was needed here.
+
+**`api/orders/sync-payment.ts`** — `{orderId, paymentId}` → looks up the payment, requires
+`status === "captured"` (anything else — pending, failed, authorized-but-not-captured — means no
+money has actually settled, so it's rejected with a clear error rather than silently accepted),
+then:
+- Overwrites `payment_details` with the verified payment's real data (`provider_payment_id`,
+  `provider_order_id`, `amount`, `currency`, `method`, `verified_at`). `provider_signature` is set
+  to the sentinel `"verified-via-admin-payment-lookup"` rather than a fabricated value — this
+  attachment never goes through the client-signed checkout flow that field normally records, and
+  a direct Razorpay API lookup is a *stronger* guarantee than that signature would be anyway, so
+  the sentinel makes that distinction visible in the stored record instead of pretending otherwise.
+- **Clears the old refund fields** (`razorpay_refund_id`, `refund_status`, `refund_amount`,
+  `refunded_at`, `refund_checked_at` → all `null`) — they describe the *previous* payment that
+  this new one supersedes; leaving them in place would make the order look simultaneously paid
+  and refunded, and would also make the auto-reconciliation in `refund-status.ts` (which now
+  checks whichever `provider_payment_id` is currently stored) check the *new* payment for refunds
+  going forward, not the old refunded one — exactly the reset needed.
+- If `order.status === "cancelled"` (the order was cancelled as part of the mistaken refund),
+  reopens it to `"processing"` and clears `cancellation_reason` — the same
+  cancelled-shipment-≠-cancelled-order judgment call as before, applied in the other direction:
+  here the admin *is* deliberately reversing a prior deliberate cancellation, so unlike that
+  earlier fix this one is allowed to change `status` away from `"cancelled"`.
+- Flags (but doesn't block) an amount mismatch between the new payment and `order.total_amount` —
+  surfaced to the admin as a second toast, not a hard failure, since a legitimate reason for the
+  amounts to differ isn't out of the question and the admin should decide, not the system.
+
+**UI**: an "Update" button in the Payment Information card header (same placement/style as
+Shipping & Logistics's own "Update" button) opens an "Update Payment Details" modal — a single
+Payment ID input, mirroring "Update Shipping Details"'s layout — calling the new
+`syncPaymentDetails` store action. No new database columns needed; this only ever writes to
+already-existing `orders` columns (`payment_method`, `payment_details`, the `refund_*` fields,
+and conditionally `status`/`cancellation_reason`).
 
 ### Order Remarks (`OrderDetails.tsx`)
 

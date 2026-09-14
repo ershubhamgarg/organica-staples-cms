@@ -160,6 +160,17 @@ export type RefundStatusResult = {
   };
 };
 
+export type SyncPaymentResult = {
+  order: Order;
+  payment: {
+    id: string | null;
+    amount: number | null;
+    method: string | null;
+    amountMismatch: boolean;
+  };
+  reopened: boolean;
+};
+
 export type SyncShippingResult = {
   order: Order;
   tracking: {
@@ -200,6 +211,10 @@ interface OrderState {
     input: { reason: string; mode: "full" | "partial"; amount?: number },
   ) => Promise<RefundOrderResult>;
   checkRefundStatus: (id: string) => Promise<RefundStatusResult>;
+  syncPaymentDetails: (
+    id: string,
+    input: { paymentId: string },
+  ) => Promise<SyncPaymentResult>;
   syncShippingDetails: (
     id: string,
     input: {
@@ -401,6 +416,29 @@ export const useOrderStore = create<OrderState>()((set) => ({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to check refund status.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  syncPaymentDetails: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<SyncPaymentResult>(
+        "/api/orders/sync-payment",
+        { orderId: id, ...input },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update payment details.";
       set({ error: message, isLoading: false });
       throw err;
     }
