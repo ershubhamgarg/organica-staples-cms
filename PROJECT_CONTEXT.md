@@ -721,6 +721,23 @@ how the base product's own stock lives in `product_inventory` rather than on `pr
 Products with zero variants are completely unaffected and keep using the base product's own
 `price`/`available_quantity`/`low_stock_threshold` fields directly.
 
+**Base (non-variant) products have always had their own `products.discount` column** (0-100,
+same `price * (1 - discount/100)` semantics as variants' `discount_percent`, already read by the
+storefront's `getDiscountedPrice` in `lib/pricing.ts`), but the CMS's product form never exposed
+it — `formData`/`blankFormData` never included `discount` at all, so it silently couldn't be
+edited for any product with zero variants. Added a "Discount (%)" input and a computed "Customer
+Pays" readout next to "Selling Price" in the base form (mirroring the variant row's own
+Discount/Customer-Pays pair exactly), and wired `discount` through `blankFormData` and the
+edit-population in `handleOpenModal`. No migration needed — the column already existed and was
+already live-populated; only the form was missing it.
+
+Also added to the **product list table**'s Price column for a non-variant product with
+`discount > 0`: a strikethrough original price + the discounted price in green + a `-X%`
+`badge-success`, reusing the exact same visual treatment the expanded variant sub-rows already
+use for their own `discount_percent` (lines ~750-781 in `Products.tsx`) — same idea, just lifted
+to the collapsed summary row for a plain product, which previously showed only the raw `price`
+with no indication a discount was even set.
+
 Each variant can also carry its own **discount percentage** (`discount_percent`, 0-100, applied to
 that variant's `price` to get what the customer actually pays) — added here, and not yet present
 in the storefront repo's migration, since it's currently an admin-side pricing tool. Confirmed via

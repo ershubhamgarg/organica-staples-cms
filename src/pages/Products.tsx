@@ -158,6 +158,7 @@ export default function Products() {
     name: "",
     description: "",
     price: 0,
+    discount: 0,
     wholesale_price: 0,
     packet_cost: 0,
     sticker_cost: 0,
@@ -188,6 +189,7 @@ export default function Products() {
         name: product.name,
         description: product.description,
         price: product.price,
+        discount: product.discount || 0,
         wholesale_price: product.wholesale_price || 0,
         packet_cost: product.packet_cost || 0,
         sticker_cost: product.sticker_cost || 0,
@@ -623,11 +625,45 @@ export default function Products() {
                           {product.category}
                         </td>
                         <td style={{ padding: "16px", fontWeight: 500 }}>
-                          {hasVariants
-                            ? minPrice === maxPrice
-                              ? `₹${formatCurrency(minPrice)}`
-                              : `₹${formatCurrency(minPrice)} – ₹${formatCurrency(maxPrice)}`
-                            : `₹${formatCurrency(product.price)}`}
+                          {hasVariants ? (
+                            minPrice === maxPrice ? (
+                              `₹${formatCurrency(minPrice)}`
+                            ) : (
+                              `₹${formatCurrency(minPrice)} – ₹${formatCurrency(maxPrice)}`
+                            )
+                          ) : (product.discount ?? 0) > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: "var(--text-secondary)",
+                                  textDecoration: "line-through",
+                                  fontWeight: 400,
+                                }}
+                              >
+                                ₹{formatCurrency(product.price)}
+                              </span>
+                              <span
+                                style={{ fontWeight: 600, color: "var(--success)" }}
+                              >
+                                ₹
+                                {formatCurrency(
+                                  product.price * (1 - (product.discount ?? 0) / 100),
+                                )}
+                              </span>
+                              <span className="badge badge-success">
+                                -{product.discount}%
+                              </span>
+                            </div>
+                          ) : (
+                            `₹${formatCurrency(product.price)}`
+                          )}
                         </td>
                         <td style={{ padding: "16px" }}>
                           {hasVariants
@@ -863,6 +899,43 @@ export default function Products() {
                     })
                   }
                 />
+              </div>
+              <div className="form-group">
+                <label>Discount (%)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 10"
+                  min={0}
+                  max={100}
+                  value={displayNumber(formData.discount)}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      discount: parseNumberInput(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Customer Pays</label>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--radius-md)",
+                    fontWeight: 600,
+                    color:
+                      (formData.discount ?? 0) > 0
+                        ? "var(--success)"
+                        : "var(--text-primary)",
+                  }}
+                >
+                  ₹
+                  {formatCurrency(
+                    formData.price * (1 - (formData.discount ?? 0) / 100),
+                  )}
+                </div>
               </div>
               <div className="form-group">
                 <label>Wholesale Price (₹)</label>
