@@ -74,6 +74,10 @@ export interface Order {
   convenience_fee_amount?: number | null;
   cod_amount?: number | null;
   wholesale_total_amount?: number | null;
+  /** Sum of every item's (packet_cost + sticker_cost) * quantity — folded
+   * into cost_to_company alongside wholesale_total_amount, but also stored
+   * on its own so it can be shown as its own line here. */
+  packaging_total_amount?: number | null;
   cost_to_company?: number | null;
   profit_loss?: number | null;
   total_amount: number;

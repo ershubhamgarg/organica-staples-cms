@@ -815,6 +815,31 @@ no `exec_sql`-style RPC exposed via PostgREST — so this was verified by carefu
 comparison against the already-live `20260910010000` version rather than an actual dry-run;
 run it in the Supabase SQL editor.
 
+**Follow-up bug found and fixed**: `coalesce(pv.wholesale_price, p.wholesale_price, 0)` only falls
+back to the product's value on a true SQL `NULL` — but the CMS's variant form always writes a
+literal `0` for `wholesale_price`/`packet_cost`/`sticker_cost` by default (`blankVariantRow`),
+never leaves them unset. So the fallback never actually fired: any variant whose costs hadn't
+been manually filled in contributed **zero** wholesale/packaging cost to every order containing
+it, regardless of the base product's real cost. Confirmed live on a real order — a Cumin Seeds
+"200 gms" variant (`wholesale_price: 0` on the variant vs `120` on the product) contributed
+nothing to that order's `cost_to_company`. Fixed in `supabase/migrations/
+20260915000000_variant_cost_fallback_fix.sql` (storefront repo) by wrapping the variant's value in
+`nullif(pv.X, 0)` before the `coalesce`, in both the CTC-calculation loop and the `order_items`
+insert — a literal 0 is now treated the same as unset. A background codebase audit confirmed this
+exact "variant value falls back to product value" pattern doesn't exist anywhere else in either
+repo, so this was the complete fix, not a partial one. **Only affects new orders** — existing
+orders already have their under-costed totals baked in and were not retroactively recalculated.
+
+**`packaging_total_amount` is now its own stored column**, added in the same migration
+(`v_packaging_total` was already computed since `20260912000000`, but only ever folded into
+`cost_to_company` — never persisted on its own). This lets `OrderDetails.tsx` show a real
+**"Packaging Cost"** line in the Order Items breakdown, right after "Wholesale Total" (same
+conditional-render pattern: hidden when `0`/`null`, e.g. for pre-migration orders that never had
+it computed). Added `Order.packaging_total_amount` to `orderStore.ts`'s type — note this is
+CMS-only; the storefront's own `Order` interface deliberately excludes internal commercial fields
+like `wholesale_total_amount`/`cost_to_company` from what the client ever sees, and
+`packaging_total_amount` follows that same exclusion.
+
 ### Update Payment Details (`api/orders/sync-payment.ts`)
 
 Handles a specific real scenario: an order gets refunded by mistake (or a legitimate refund is

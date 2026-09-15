@@ -821,6 +821,22 @@ export default function OrderDetails() {
                   </div>
                 ) : null}
 
+                {order.packaging_total_amount ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      color: "var(--text-secondary)",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <span>Packaging Cost</span>
+                    <span>
+                      ₹{formatCurrency(order.packaging_total_amount)}
+                    </span>
+                  </div>
+                ) : null}
+
                 {order.discount_amount && order.discount_amount > 0 ? (
                   <div
                     style={{
