@@ -20,7 +20,11 @@ import IconButton from "../components/ui/IconButton";
 import { formatCurrency } from "../utils/currency";
 import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { isLocalOrder } from "../utils/localOrder";
-import { isCollabOrder } from "../utils/collabOrder";
+import {
+  isCollabOrder,
+  isCodOrder,
+  formatCodPaymentModeLabel,
+} from "../utils/collabOrder";
 import { getUnifiedOrderStatus } from "../utils/shippingStatus";
 
 type SortField =
@@ -271,15 +275,15 @@ export default function Orders() {
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
                       <td style={{ padding: "16px", fontWeight: 600 }}>
-                        {isCollabOrder(order) ? (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            ₹{formatCurrency(order.total_amount)}
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          ₹{formatCurrency(order.total_amount)}
+                          {isCollabOrder(order) && (
                             <span
                               className="badge badge-info"
                               style={{ gap: "4px" }}
@@ -288,10 +292,23 @@ export default function Orders() {
                               <Gift size={12} />
                               Collab
                             </span>
-                          </span>
-                        ) : (
-                          <>₹{formatCurrency(order.total_amount)}</>
-                        )}
+                          )}
+                          {isCodOrder(order) && (
+                            <span
+                              className={`badge badge-${order.cod_payment_received ? "success" : "warning"}`}
+                              style={{ gap: "4px" }}
+                              data-tooltip={
+                                order.cod_payment_received
+                                  ? `Collected via ${formatCodPaymentModeLabel(order.cod_payment_mode)}`
+                                  : "COD — collection not yet confirmed"
+                              }
+                            >
+                              {order.cod_payment_received
+                                ? `COD ✓ ${formatCodPaymentModeLabel(order.cod_payment_mode)}`
+                                : "COD Pending"}
+                            </span>
+                          )}
+                        </span>
                       </td>
                       <td style={{ padding: "16px" }}>
                         <span

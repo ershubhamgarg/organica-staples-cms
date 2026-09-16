@@ -83,6 +83,7 @@ keyed by `code`), `launchInterestStore.ts` (`product_launch_interests`), `custom
 11. **Sales Reports:** `src/pages/SalesReports.tsx` — filter orders by preset range (Today/This Week/This Month/Last Month/This Year) or a custom date range, view a Daily/Weekly/Monthly revenue breakdown, top products, payment-method and order-status splits, and export the filtered orders as CSV or a formatted PDF report. See below for details.
 12. **Order Remarks:** A collapsible section on the order detail page for free-form, timestamped admin notes on an order — e.g. logging that a feature didn't behave as expected, or a note from a customer call. See below for details.
 13. **Update Payment Details:** Attach a new Razorpay payment to an order by Payment ID — for when a refund was issued by mistake and the customer re-paid. Verifies the payment directly with Razorpay, clears the now-superseded refund status, and reopens the order if it had been cancelled. See below and `api/orders/sync-payment.ts`.
+14. **COD Payment Confirmation:** For Cash on Delivery orders, confirm whether the delivery agent actually collected payment, how much, and via which mode (cash/card/UPI). Unconfirmed COD orders are excluded from Sales Reports revenue/profit until confirmed. See below.
 
 ## Environment Setup
 Required variables in `.env` (client-side, Vite-exposed):
@@ -886,6 +887,66 @@ Payment ID input, mirroring "Update Shipping Details"'s layout — calling the n
 `syncPaymentDetails` store action. No new database columns needed; this only ever writes to
 already-existing `orders` columns (`payment_method`, `payment_details`, the `refund_*` fields,
 and conditionally `status`/`cancellation_reason`).
+
+### COD Payment Confirmation
+
+A COD order's `total_amount` is what the delivery agent is expected to collect, but until this
+feature, nothing tracked whether that money was actually handed over, how much, or how (cash,
+card machine, UPI — delivery agents often carry more than one). Every COD order counted fully
+toward Sales Reports revenue/profit the instant it was placed, with no distinction from money
+actually in hand. New columns on `orders`:
+
+```sql
+alter table public.orders
+  add column if not exists cod_payment_received boolean not null default false,
+  add column if not exists cod_payment_amount numeric,
+  add column if not exists cod_payment_mode text
+    check (cod_payment_mode is null or cod_payment_mode in ('cash', 'card', 'upi')),
+  add column if not exists cod_confirmed_at timestamptz;
+```
+
+**`src/utils/collabOrder.ts`** gained `isCodOrder()`, `isCodPaymentPending()` (COD **and** not yet
+confirmed), `COD_PAYMENT_MODES`/`CodPaymentMode`, and `formatCodPaymentModeLabel()` — same file
+that already held `isCollabOrder`/`formatPaymentMethodLabel`, since these are all "what kind of
+order/payment is this" helpers shared across `Orders.tsx`, `OrderDetails.tsx`, and
+`salesReport.ts`.
+
+**`confirmCodPayment(id, {received, amount?, mode?})`** (`orderStore.ts`) — a direct Supabase
+`.update()`, no Edge Function needed (no external API involved, same tier as `updateOrderStatus`/
+`addOrderRemark`). Unchecking "Payment Received" clears `cod_payment_amount`/`cod_payment_mode`/
+`cod_confirmed_at` back to null rather than leaving stale detail behind for money no longer
+marked collected.
+
+**UI**: a "COD Collection" subsection inside `OrderDetails.tsx`'s existing Payment Information
+card (conditional on `isCodOrder(order)`, alongside the "Refund" subsection's similar
+conditional-render pattern) — a checkbox, and (only while checked) an amount input defaulting to
+`order.total_amount` and a Cash/Card/UPI select, plus a Save button. A badge in the subsection
+header shows Received/Pending at a glance. `Orders.tsx`'s Total column gets the same badge inline
+with the amount (mirroring how a collab order already shows a "Collab" badge there) — "COD
+Pending" (warning) or "COD ✓ Cash/Card/UPI" (success).
+
+**Sales Reports (`salesReport.ts`)**: `computeSalesSummary` now splits `activeOrders` into
+`revenueOrders` (everything else) and a separate pending-COD bucket via `isCodPaymentPending`.
+The *entire* revenue-accumulation loop — gross/net revenue, discounts, shipping, COD charges,
+wholesale cost, profit, `paymentMethodBreakdown`, `totalItemsSold`, and `topProducts` — now runs
+over `revenueOrders` only, not `activeOrders`; a pending COD order contributes nothing to any of
+these until confirmed, staying internally consistent (no order whose money isn't in hand shows up
+partially in some figures but not others). `avgOrderValue`'s denominator was updated the same way
+alongside the existing collab-order exclusion. The excluded amount isn't just dropped silently —
+new `pendingCodOrders`/`pendingCodAmount` fields on `SalesSummary`, surfaced as a "Pending COD
+Collection" `StatCard` in `SalesReports.tsx` (shown only when non-zero, same conditional pattern
+as the existing "Collab Orders" card) and folded into the "Avg Order Value" card's `sub` text.
+A **confirmed** COD order's `paymentMethodBreakdown` label becomes `"Cash on Delivery (Cash)"` /
+`"(Card)"` / `"(UPI)"` rather than a bare "Cash on Delivery", so the actual collection mode is
+visible in the payment-method split, not just buried in the order detail page. `ordersToCSV` gained
+three columns (COD Payment Received / Amount Collected / Payment Mode, blank for non-COD orders).
+
+**This only affects new confirmations going forward** — an already-placed COD order's revenue
+wasn't previously gated on anything, so this changes what future Sales Reports show for orders
+placed before this shipped (they'll show as "pending" until someone goes back and confirms them,
+even if the cash was collected weeks ago) — worth a heads-up to whoever runs reports next, not a
+data migration, since there's no reliable way to backfill "was this actually collected" after the
+fact.
 
 ### Order Remarks (`OrderDetails.tsx`)
 

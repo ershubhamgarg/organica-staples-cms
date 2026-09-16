@@ -1,7 +1,13 @@
 import type { Order } from "../store/orderStore";
 import { getOrderGrossWeightKg } from "./weight";
 import { computeOrderTax } from "./gst";
-import { formatPaymentMethodLabel, isCollabOrder } from "./collabOrder";
+import {
+  formatPaymentMethodLabel,
+  isCollabOrder,
+  isCodOrder,
+  isCodPaymentPending,
+  formatCodPaymentModeLabel,
+} from "./collabOrder";
 
 export type DatePreset =
   | "today"
@@ -153,6 +159,11 @@ export interface SalesSummary {
   collabOrders: number;
   /** Cost absorbed on those orders (marketing spend, not lost sales). */
   collabCost: number;
+  /** COD orders awaiting cash/card/UPI collection confirmation — excluded
+   * from every revenue/profit figure above until confirmed, since the money
+   * isn't actually in hand yet. Tracked here so it isn't just invisible. */
+  pendingCodOrders: number;
+  pendingCodAmount: number;
   paymentMethodBreakdown: Record<string, { count: number; amount: number }>;
   statusBreakdown: Record<string, number>;
   topProducts: ProductSalesRow[];
@@ -161,6 +172,12 @@ export interface SalesSummary {
 export function computeSalesSummary(orders: Order[]): SalesSummary {
   const activeOrders = orders.filter((o) => !isCancelled(o));
   const cancelledOrders = orders.filter(isCancelled);
+  // A COD order whose cash/card/UPI collection hasn't been confirmed yet
+  // isn't real revenue until it is — excluded from every financial figure
+  // below (not just amount, but item/product counts too, so the report
+  // stays internally consistent) and tracked separately instead.
+  const pendingCodOrdersList = activeOrders.filter(isCodPaymentPending);
+  const revenueOrders = activeOrders.filter((o) => !isCodPaymentPending(o));
 
   const paymentMethodBreakdown: Record<string, { count: number; amount: number }> = {};
   const statusBreakdown: Record<string, number> = {};
@@ -184,7 +201,7 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     statusBreakdown[order.status] = (statusBreakdown[order.status] ?? 0) + 1;
   }
 
-  for (const order of activeOrders) {
+  for (const order of revenueOrders) {
     if (isCollabOrder(order)) {
       collabOrders += 1;
       collabCost += order.cost_to_company ?? 0;
@@ -203,7 +220,12 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     totalProfit += order.profit_loss ?? 0;
     totalWeightKg += getOrderGrossWeightKg(order.items ?? []);
 
-    const method = formatPaymentMethodLabel(order.payment_method);
+    // Every COD order reaching this loop is, by construction, a confirmed
+    // one (pending ones were filtered into pendingCodOrdersList above) — so
+    // it's safe to always show its actual collection mode here.
+    const method = isCodOrder(order)
+      ? `${formatPaymentMethodLabel(order.payment_method)} (${formatCodPaymentModeLabel(order.cod_payment_mode)})`
+      : formatPaymentMethodLabel(order.payment_method);
     if (!paymentMethodBreakdown[method]) {
       paymentMethodBreakdown[method] = { count: 0, amount: 0 };
     }
@@ -226,6 +248,11 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
       }
     }
   }
+
+  const pendingCodAmount = pendingCodOrdersList.reduce(
+    (sum, o) => sum + (o.total_amount ?? 0),
+    0,
+  );
 
   const cancelledValue = cancelledOrders.reduce(
     (sum, o) => sum + (o.total_amount ?? 0),
@@ -259,9 +286,10 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     // Barter orders are excluded from the denominator — they're ₹0 by
     // design, so counting them would drag the average toward zero and make
     // it read as a drop in order value rather than marketing activity.
+    // Pending-COD orders are excluded from revenueOrders entirely already.
     avgOrderValue:
-      activeOrders.length - collabOrders > 0
-        ? round2(netRevenue / (activeOrders.length - collabOrders))
+      revenueOrders.length - collabOrders > 0
+        ? round2(netRevenue / (revenueOrders.length - collabOrders))
         : 0,
     refundedAmount: round2(refundedAmount),
     refundedCount: refundedOrders.length,
@@ -269,6 +297,8 @@ export function computeSalesSummary(orders: Order[]): SalesSummary {
     totalWeightKg,
     collabOrders,
     collabCost: round2(collabCost),
+    pendingCodOrders: pendingCodOrdersList.length,
+    pendingCodAmount: round2(pendingCodAmount),
     paymentMethodBreakdown,
     statusBreakdown,
     topProducts,
@@ -371,6 +401,9 @@ export function ordersToCSV(orders: Order[]): string {
     "Profit/Loss",
     "Payment Method",
     "Payment Status",
+    "COD Payment Received",
+    "COD Amount Collected",
+    "COD Payment Mode",
     "Order Status",
     "Shipping Status",
     "Refund Status",
@@ -411,6 +444,9 @@ export function ordersToCSV(orders: Order[]): string {
       order.profit_loss ?? 0,
       formatPaymentMethodLabel(order.payment_method),
       order.payment_details?.status ?? "",
+      isCodOrder(order) ? (order.cod_payment_received ? "Yes" : "No") : "",
+      isCodOrder(order) ? order.cod_payment_amount ?? "" : "",
+      isCodOrder(order) ? formatCodPaymentModeLabel(order.cod_payment_mode) : "",
       order.status,
       order.shipping_status ?? "",
       order.refund_status ?? "",

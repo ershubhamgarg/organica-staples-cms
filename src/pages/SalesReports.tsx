@@ -359,8 +359,15 @@ export default function SalesReports() {
               label="Avg Order Value"
               value={`₹${formatCurrency(summary.avgOrderValue)}`}
               sub={
-                summary.collabOrders > 0
-                  ? "excludes collab orders"
+                summary.collabOrders > 0 || summary.pendingCodOrders > 0
+                  ? [
+                      summary.collabOrders > 0 ? "excludes collab orders" : null,
+                      summary.pendingCodOrders > 0
+                        ? "excludes pending COD"
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")
                   : undefined
               }
             />
@@ -369,6 +376,14 @@ export default function SalesReports() {
                 label="Collab Orders"
                 value={String(summary.collabOrders)}
                 sub={`₹${formatCurrency(summary.collabCost)} cost absorbed`}
+                color="var(--warning)"
+              />
+            )}
+            {summary.pendingCodOrders > 0 && (
+              <StatCard
+                label="Pending COD Collection"
+                value={`₹${formatCurrency(summary.pendingCodAmount)}`}
+                sub={`${summary.pendingCodOrders} order${summary.pendingCodOrders === 1 ? "" : "s"} — excluded above until confirmed`}
                 color="var(--warning)"
               />
             )}

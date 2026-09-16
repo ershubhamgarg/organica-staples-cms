@@ -117,6 +117,15 @@ export interface Order {
   /** Free-form, timestamped admin notes — e.g. "AWB sync failed, called
    * Shiprocket support at 3pm" — append-only, newest last. */
   remarks?: OrderRemark[] | null;
+  /** Whether a COD order's cash/card/UPI collection has been confirmed by
+   * staff — unconfirmed COD orders are excluded from Sales Reports revenue
+   * (see computeSalesSummary) since the money isn't actually in hand yet. */
+  cod_payment_received?: boolean | null;
+  /** Actual amount collected — may differ from total_amount (a shortfall,
+   * a rounding adjustment the delivery agent made, etc.). */
+  cod_payment_amount?: number | null;
+  cod_payment_mode?: "cash" | "card" | "upi" | string | null;
+  cod_confirmed_at?: string | null;
 }
 
 export type OrderRemark = {
@@ -206,6 +215,10 @@ interface OrderState {
   ) => Promise<void>;
   getOrderById: (id: string) => Promise<Order | null>;
   addOrderRemark: (id: string, text: string) => Promise<Order>;
+  confirmCodPayment: (
+    id: string,
+    input: { received: boolean; amount?: number; mode?: string },
+  ) => Promise<Order>;
   cancelOrderWithRefund: (
     id: string,
     input: { reason: string; refund: { mode: RefundMode; amount?: number } },
@@ -341,6 +354,39 @@ export const useOrderStore = create<OrderState>()((set) => ({
     const { data, error } = await supabase
       .from("orders")
       .update({ remarks: nextRemarks })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      set({ error: error.message, isLoading: false });
+      throw new Error(error.message);
+    }
+
+    set((state) => ({
+      orders: state.orders.map((o) => (o.id === id ? data : o)),
+      isLoading: false,
+    }));
+
+    return data;
+  },
+
+  confirmCodPayment: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    const updates = {
+      cod_payment_received: input.received,
+      // Unchecking "Payment Received" clears the detail fields rather than
+      // leaving stale amount/mode/timestamp behind for money that's no
+      // longer marked as collected.
+      cod_payment_amount: input.received ? input.amount ?? null : null,
+      cod_payment_mode: input.received ? input.mode ?? null : null,
+      cod_confirmed_at: input.received ? new Date().toISOString() : null,
+    };
+
+    const { data, error } = await supabase
+      .from("orders")
+      .update(updates)
       .eq("id", id)
       .select()
       .single();

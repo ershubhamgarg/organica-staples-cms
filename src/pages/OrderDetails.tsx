@@ -38,6 +38,10 @@ import { isLocalOrder } from "../utils/localOrder";
 import {
   formatPaymentMethodLabel,
   isCollabOrder,
+  isCodOrder,
+  formatCodPaymentModeLabel,
+  COD_PAYMENT_MODES,
+  type CodPaymentMode,
 } from "../utils/collabOrder";
 import { getShippingStatusColor, formatShippingStatusLabel } from "../utils/shippingStatus";
 
@@ -56,6 +60,7 @@ export default function OrderDetails() {
   const refundOrder = useOrderStore((state) => state.refundOrder);
   const checkRefundStatus = useOrderStore((state) => state.checkRefundStatus);
   const addOrderRemark = useOrderStore((state) => state.addOrderRemark);
+  const confirmCodPayment = useOrderStore((state) => state.confirmCodPayment);
   const syncShippingDetails = useOrderStore(
     (state) => state.syncShippingDetails,
   );
@@ -90,6 +95,10 @@ export default function OrderDetails() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [syncPaymentId, setSyncPaymentId] = useState("");
   const [isSyncingPayment, setIsSyncingPayment] = useState(false);
+  const [codReceived, setCodReceived] = useState(false);
+  const [codAmount, setCodAmount] = useState(0);
+  const [codMode, setCodMode] = useState<CodPaymentMode>("cash");
+  const [isSavingCod, setIsSavingCod] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -102,6 +111,11 @@ export default function OrderDetails() {
       // Auto-expand so an existing remark isn't missed behind a collapsed
       // section — a fresh order with none stays collapsed by default.
       setShowRemarks(Boolean(fetchedOrder?.remarks?.length));
+      setCodReceived(Boolean(fetchedOrder?.cod_payment_received));
+      setCodAmount(
+        fetchedOrder?.cod_payment_amount ?? fetchedOrder?.total_amount ?? 0,
+      );
+      setCodMode((fetchedOrder?.cod_payment_mode as CodPaymentMode) || "cash");
 
       // Shiprocket status can change between visits (in transit, delivered,
       // etc.) — pull the latest the moment the page opens rather than
@@ -331,6 +345,36 @@ export default function OrderDetails() {
       toast.error(err instanceof Error ? err.message : "Failed to add remark.");
     } finally {
       setIsAddingRemark(false);
+    }
+  };
+
+  const handleSaveCodPayment = async () => {
+    if (!id) return;
+    if (codReceived && !(codAmount > 0)) {
+      toast.error("Enter the amount actually collected.");
+      return;
+    }
+
+    try {
+      setIsSavingCod(true);
+      const updatedOrder = await confirmCodPayment(id, {
+        received: codReceived,
+        amount: codReceived ? codAmount : undefined,
+        mode: codReceived ? codMode : undefined,
+      });
+      setOrder(updatedOrder);
+      toast.success(
+        codReceived
+          ? `COD payment confirmed — ₹${formatCurrency(codAmount)} via ${formatCodPaymentModeLabel(codMode)}.`
+          : "COD payment marked as not received.",
+      );
+    } catch (err) {
+      console.error("Failed to update COD payment:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update COD payment.",
+      );
+    } finally {
+      setIsSavingCod(false);
     }
   };
 
@@ -1298,6 +1342,100 @@ export default function OrderDetails() {
                   </>
                 )}
               </div>
+
+              {isCodOrder(order) && (
+                <div className="card-subsection">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <span className="eyebrow">COD Collection</span>
+                    <span
+                      className={`badge badge-${order.cod_payment_received ? "success" : "warning"}`}
+                    >
+                      {order.cod_payment_received ? "Received" : "Pending"}
+                    </span>
+                  </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "0.9rem",
+                      cursor: "pointer",
+                      marginBottom: codReceived ? "0.75rem" : 0,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={codReceived}
+                      onChange={(e) => setCodReceived(e.target.checked)}
+                      style={{ width: "auto" }}
+                    />
+                    Payment Received
+                  </label>
+
+                  {codReceived && (
+                    <div
+                      className="responsive-grid"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "0.75rem",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Amount Received (₹)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={displayNumber(codAmount)}
+                          onChange={(e) =>
+                            setCodAmount(parseNumberInput(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Mode</label>
+                        <select
+                          value={codMode}
+                          onChange={(e) =>
+                            setCodMode(e.target.value as CodPaymentMode)
+                          }
+                        >
+                          {COD_PAYMENT_MODES.map((mode) => (
+                            <option key={mode} value={mode}>
+                              {formatCodPaymentModeLabel(mode)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {order.cod_confirmed_at && (
+                    <InfoRow
+                      label="Confirmed At"
+                      value={formatDateTime(order.cod_confirmed_at)}
+                    />
+                  )}
+
+                  <Button
+                    size="sm"
+                    loading={isSavingCod}
+                    onClick={handleSaveCodPayment}
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    Save
+                  </Button>
+                </div>
+              )}
 
               <div className="card-subsection">
                 <div

@@ -15,6 +15,33 @@ export function isCollabOrder(
   return order.payment_method === BARTER_COLLAB_PAYMENT_METHOD;
 }
 
+export function isCodOrder(order: Pick<Order, "payment_method">): boolean {
+  return order.payment_method === "cod";
+}
+
+/** A COD order whose cash/card/UPI collection hasn't been confirmed yet. */
+export function isCodPaymentPending(
+  order: Pick<Order, "payment_method" | "cod_payment_received">,
+): boolean {
+  return isCodOrder(order) && !order.cod_payment_received;
+}
+
+export const COD_PAYMENT_MODES = ["cash", "card", "upi"] as const;
+export type CodPaymentMode = (typeof COD_PAYMENT_MODES)[number];
+
+const COD_PAYMENT_MODE_LABELS: Record<string, string> = {
+  cash: "Cash",
+  card: "Card",
+  upi: "UPI",
+};
+
+export function formatCodPaymentModeLabel(
+  mode: string | null | undefined,
+): string {
+  if (!mode) return "—";
+  return COD_PAYMENT_MODE_LABELS[mode] ?? mode;
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   razorpay: "Razorpay",
   cod: "Cash on Delivery",
