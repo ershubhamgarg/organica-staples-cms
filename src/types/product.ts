@@ -25,6 +25,8 @@ export interface ProductVariant {
 
 export interface Product {
   id: string;
+  /** URL identifier on the storefront (/product/<slug>); id stays the real identity. */
+  slug?: string | null;
   name: string;
   description: string;
   price: number;

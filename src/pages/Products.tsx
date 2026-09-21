@@ -31,6 +31,7 @@ import { formatCurrency } from "../utils/currency";
 import { parseWeightKg } from "../utils/weight";
 import { displayNumber, parseNumberInput } from "../utils/number";
 import { getCostPrice } from "../utils/costPrice";
+import { slugify } from "../utils/slug";
 
 type SortField =
   | "none"
@@ -140,6 +141,7 @@ export default function Products() {
   };
   const blankFormData: ProductFormData = {
     name: "",
+    slug: "",
     description: "",
     price: 0,
     discount: 0,
@@ -172,6 +174,7 @@ export default function Products() {
       setEditingProduct(product);
       setFormData({
         name: product.name,
+        slug: product.slug ?? "",
         description: product.description,
         price: product.price,
         discount: product.discount || 0,
@@ -857,9 +860,43 @@ export default function Products() {
                   required
                   value={formData.name}
                   onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+                    setFormData({
+                      ...formData,
+                      name: e.target.value,
+                      // New products only: keep the slug tracking the name
+                      // until it's been edited by hand. An existing product's
+                      // slug never changes just because its name did — that
+                      // would silently break its shared links.
+                      ...(!editingProduct &&
+                      (formData.slug ?? "") === slugify(formData.name)
+                        ? { slug: slugify(e.target.value) }
+                        : {}),
+                    })
                   }
                 />
+              </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label>URL Slug</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.slug ?? ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, slug: slugify(e.target.value) })
+                  }
+                  placeholder="e.g. pure-turmeric-powder"
+                />
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-secondary)",
+                    marginTop: "4px",
+                  }}
+                >
+                  Storefront URL: /product/{formData.slug || "…"}
+                  {editingProduct &&
+                    " — changing this breaks existing links to this product's old URL."}
+                </div>
               </div>
               <div className="form-group" style={{ gridColumn: "span 2" }}>
                 <label>Description</label>

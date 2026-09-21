@@ -93,6 +93,11 @@ function flattenInventory(
   };
 }
 
+const friendlyError = (error: { code?: string; message: string }) =>
+  error.code === "23505" && error.message.includes("slug")
+    ? "Another product already uses that URL slug — choose a different one."
+    : error.message;
+
 export const useProductStore = create<ProductState>()((set, get) => ({
   products: [],
   isLoading: false,
@@ -125,7 +130,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
       );
 
     if (error || !data || !data[0]) {
-      const message = error?.message || "Failed to create product";
+      const message = error ? friendlyError(error) : "Failed to create product";
       set({ error: message, isLoading: false });
       throw new Error(message);
     }
@@ -149,8 +154,9 @@ export const useProductStore = create<ProductState>()((set, get) => ({
       );
 
     if (error) {
-      set({ error: error.message, isLoading: false });
-      throw new Error(error.message);
+      const message = friendlyError(error);
+      set({ error: message, isLoading: false });
+      throw new Error(message);
     }
 
     if (data) {
