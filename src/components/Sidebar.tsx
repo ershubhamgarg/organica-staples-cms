@@ -7,6 +7,7 @@ import {
   Users,
   LogOut,
   Percent,
+  Blocks,
   Bell,
   BarChart3,
   X,
@@ -29,6 +30,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { icon: ShoppingCart, label: "Orders", path: "/orders" },
     { icon: BarChart3, label: "Sales Reports", path: "/sales-reports" },
     { icon: Percent, label: "Coupons", path: "/coupons" },
+    { icon: Blocks, label: "Combos", path: "/combos" },
     { icon: Bell, label: "Launch Interests", path: "/launch-interests" },
     { icon: Users, label: "Customers", path: "/customers" },
   ];

@@ -15,6 +15,8 @@ export interface ProductVariant {
   sku?: string | null;
   sort_order?: number;
   is_active?: boolean;
+  /** This specific pack size can be picked in the storefront combo builder. */
+  is_combo_eligible?: boolean;
   // Flattened client-side from product_variant_inventory, same pattern as
   // the base product's available_quantity/low_stock_threshold below.
   available_quantity?: number | null;
@@ -40,6 +42,12 @@ export interface Product {
   rating?: number;
   review_count?: number;
   isVisible?: boolean | null;
+  /**
+   * Can be picked in the storefront combo builder. Only meaningful for a
+   * product with no variants — a product that has variants is bought as a
+   * variant, so eligibility is set per variant instead.
+   */
+  is_combo_eligible?: boolean;
   available_quantity?: number | null;
   reserved_quantity?: number | null;
   low_stock_threshold?: number | null;

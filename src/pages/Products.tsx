@@ -115,6 +115,7 @@ const blankVariantRow = (sortOrder: number): ProductVariant => ({
   available_quantity: 0,
   low_stock_threshold: 5,
   sort_order: sortOrder,
+  is_combo_eligible: false,
 });
 
 export default function Products() {
@@ -168,6 +169,7 @@ export default function Products() {
     weight: "",
     benefits: [],
     isVisible: true,
+    is_combo_eligible: false,
     available_quantity: 0,
     low_stock_threshold: 5,
     hsn_code: "",
@@ -203,6 +205,7 @@ export default function Products() {
         weight: product.weight,
         benefits: product.benefits || [],
         isVisible: product.isVisible ?? true,
+        is_combo_eligible: product.is_combo_eligible ?? false,
         available_quantity: product.available_quantity ?? 0,
         low_stock_threshold: product.low_stock_threshold ?? 5,
         hsn_code: product.hsn_code || "",
@@ -1364,6 +1367,28 @@ export default function Products() {
                             />
                           </div>
                         </div>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            cursor: "pointer",
+                            marginTop: "1rem",
+                            fontSize: "0.875rem",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={variant.is_combo_eligible ?? false}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                is_combo_eligible: e.target.checked,
+                              })
+                            }
+                            style={{ width: "auto" }}
+                          />
+                          Available in Build-Your-Own Combo
+                        </label>
                       </div>
                     );
                   })}
@@ -1475,6 +1500,45 @@ export default function Products() {
                   />
                   Visible on store
                 </label>
+              </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor: (formData.variants ?? []).length > 0
+                      ? "not-allowed"
+                      : "pointer",
+                    opacity: (formData.variants ?? []).length > 0 ? 0.5 : 1,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.is_combo_eligible ?? false}
+                    disabled={(formData.variants ?? []).length > 0}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        is_combo_eligible: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Available in Build-Your-Own Combo
+                </label>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-secondary)",
+                    marginTop: "0.25rem",
+                    display: "block",
+                  }}
+                >
+                  {(formData.variants ?? []).length > 0
+                    ? "This product is sold by size, so combo eligibility is set per variant below."
+                    : "Customers can pick this product when building their own combo."}
+                </span>
               </div>
             </div>
             <div

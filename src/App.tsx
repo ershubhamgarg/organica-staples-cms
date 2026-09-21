@@ -13,6 +13,7 @@ import Inventory from "./pages/Inventory";
 import Orders from "./pages/Orders";
 import OrderDetails from "./pages/OrderDetails";
 import Coupons from "./pages/Coupons";
+import Combos from "./pages/Combos";
 import LaunchInterests from "./pages/LaunchInterests";
 import Customers from "./pages/Customers";
 import SalesReports from "./pages/SalesReports";
@@ -75,6 +76,7 @@ function App() {
             <Route path="orders/:id" element={<OrderDetails />} />
             <Route path="sales-reports" element={<SalesReports />} />
             <Route path="coupons" element={<Coupons />} />
+            <Route path="combos" element={<Combos />} />
             <Route path="launch-interests" element={<LaunchInterests />} />
             <Route path="customers" element={<Customers />} />
           </Route>

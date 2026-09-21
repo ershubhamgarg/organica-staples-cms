@@ -560,15 +560,30 @@ export default function OrderDetails() {
         throw new Error(result?.error || "Failed to download invoice.");
       }
 
+      // `response.ok` alone isn't proof of a PDF. The plain `vite` dev
+      // server doesn't run /api handlers — it answers 200 with the handler's
+      // own source (or index.html), which used to be saved as a ".pdf" that
+      // then opened blank. Check what actually came back before saving it.
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const head = await blob.slice(0, 5).text();
+      if (head !== "%PDF-") {
+        throw new Error(
+          import.meta.env.DEV
+            ? "The local dev server can't serve /api routes, so this isn't a PDF. Run with `vercel dev`, or set VITE_API_PROXY_TARGET to a deployed CMS URL."
+            : "The server did not return a valid PDF. Please try again.",
+        );
+      }
+
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
       const link = document.createElement("a");
       link.href = url;
       link.download = `${(order.invoice_number || order.id).replace(/\//g, "-")}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      // Revoking synchronously can cancel the download before the browser
+      // has started reading the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
       console.error("Failed to download invoice:", err);
       toast.error(

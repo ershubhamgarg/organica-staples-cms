@@ -219,6 +219,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
               is_active: variant.is_active ?? true,
+              is_combo_eligible: variant.is_combo_eligible ?? false,
             })
             .eq("id", variant.id);
 
@@ -243,6 +244,7 @@ export const useProductStore = create<ProductState>()((set, get) => ({
               sticker_cost: variant.sticker_cost ?? null,
               discount_percent: variant.discount_percent ?? 0,
               sort_order: variant.sort_order ?? 0,
+              is_combo_eligible: variant.is_combo_eligible ?? false,
             })
             .select()
             .single();
