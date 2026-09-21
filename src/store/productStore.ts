@@ -21,6 +21,11 @@ interface ProductState {
       low_stock_threshold?: number;
     },
   ) => Promise<void>;
+  updateVariantInventory: (
+    productId: string,
+    variantId: number,
+    updates: { available_quantity?: number; low_stock_threshold?: number },
+  ) => Promise<void>;
   replaceVariants: (
     productId: string,
     variants: ProductVariant[],
@@ -172,6 +177,33 @@ export const useProductStore = create<ProductState>()((set, get) => ({
     set((state) => ({
       products: state.products.map((p) =>
         p.id === productId ? { ...p, ...updates } : p,
+      ),
+      isLoading: false,
+    }));
+  },
+
+  updateVariantInventory: async (productId, variantId, updates) => {
+    set({ isLoading: true, error: null });
+    const { error } = await supabase
+      .from("product_variant_inventory")
+      .update(updates)
+      .eq("variant_id", variantId);
+
+    if (error) {
+      set({ error: error.message, isLoading: false });
+      throw new Error(error.message);
+    }
+
+    set((state) => ({
+      products: state.products.map((p) =>
+        p.id === productId
+          ? {
+              ...p,
+              variants: p.variants?.map((v) =>
+                v.id === variantId ? { ...v, ...updates } : v,
+              ),
+            }
+          : p,
       ),
       isLoading: false,
     }));

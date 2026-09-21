@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Boxes, Edit2, Search } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Boxes, ChevronDown, ChevronRight, Edit2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useProductStore } from "../store/productStore";
-import { type Product } from "../types/product";
+import { type Product, type ProductVariant } from "../types/product";
 import PageHeader from "../components/ui/PageHeader";
 import ErrorBanner from "../components/ui/ErrorBanner";
 import Spinner from "../components/ui/Spinner";
@@ -13,7 +13,11 @@ import Button from "../components/ui/Button";
 import IconButton from "../components/ui/IconButton";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
-import { getStockStatus, type StockStatus } from "../utils/stockStatus";
+import {
+  getStockStatus,
+  getProductAggregateStatus,
+  type StockStatus,
+} from "../utils/stockStatus";
 import { displayNumber, parseNumberInput } from "../utils/number";
 
 type FilterOption = "all" | StockStatus;
@@ -25,12 +29,37 @@ const filterOptions: { value: FilterOption; label: string }[] = [
   { value: "out_of_stock", label: "Out of Stock" },
 ];
 
+// The unit being edited: a plain product, or one variant of a product. A
+// product with variants has no stock of its own — each variant (size/weight)
+// tracks its own quantity.
+type StockRow = {
+  product: Product;
+  variant?: ProductVariant;
+  available_quantity: number | null | undefined;
+  low_stock_threshold: number | null | undefined;
+};
+
 export default function Inventory() {
-  const { products, isLoading, error, fetchProducts, updateInventory } =
-    useProductStore();
+  const {
+    products,
+    isLoading,
+    error,
+    fetchProducts,
+    updateInventory,
+    updateVariantInventory,
+  } = useProductStore();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterOption>("all");
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingRow, setEditingRow] = useState<StockRow | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (productId: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
   const [quantity, setQuantity] = useState(0);
   const [threshold, setThreshold] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -42,12 +71,17 @@ export default function Inventory() {
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
     return products.filter((product) => {
+      const variants = product.variants ?? [];
       const matchesSearch =
         !query ||
         product.name.toLowerCase().includes(query) ||
-        String(product.id).includes(query);
+        String(product.id).includes(query) ||
+        variants.some((v) => (v.label ?? "").toLowerCase().includes(query));
+      // A product matches a stock filter if it, or any of its variants, does.
       const matchesFilter =
-        filter === "all" || getStockStatus(product).status === filter;
+        filter === "all" ||
+        getProductAggregateStatus(product).status === filter ||
+        variants.some((v) => getStockStatus(v).status === filter);
       return matchesSearch && matchesFilter;
     });
   }, [products, search, filter]);
@@ -55,31 +89,43 @@ export default function Inventory() {
   const counts = useMemo(() => {
     const result = { in_stock: 0, low_stock: 0, out_of_stock: 0 };
     for (const product of products) {
-      result[getStockStatus(product).status] += 1;
+      result[getProductAggregateStatus(product).status] += 1;
     }
     return result;
   }, [products]);
 
-  const handleOpenEdit = (product: Product) => {
-    setEditingProduct(product);
-    setQuantity(product.available_quantity ?? 0);
-    setThreshold(product.low_stock_threshold ?? 5);
+  const handleOpenEdit = (row: StockRow) => {
+    setEditingRow(row);
+    setQuantity(row.available_quantity ?? 0);
+    setThreshold(row.low_stock_threshold ?? 5);
   };
 
   const handleSaveInventory = async () => {
-    if (!editingProduct) return;
+    if (!editingRow) return;
+    const editingProduct = editingRow.product;
     if (quantity < 0 || threshold < 0) {
       toast.error("Quantity and threshold cannot be negative.");
       return;
     }
     try {
       setIsSaving(true);
-      await updateInventory(editingProduct.id, {
+      const updates = {
         available_quantity: quantity,
         low_stock_threshold: threshold,
-      });
-      toast.success(`Inventory updated for ${editingProduct.name}.`);
-      setEditingProduct(null);
+      };
+      if (editingRow.variant?.id !== undefined) {
+        await updateVariantInventory(
+          editingProduct.id,
+          editingRow.variant.id,
+          updates,
+        );
+      } else {
+        await updateInventory(editingProduct.id, updates);
+      }
+      toast.success(
+        `Inventory updated for ${editingProduct.name}${editingRow.variant ? ` (${editingRow.variant.label})` : ""}.`,
+      );
+      setEditingRow(null);
     } catch (err) {
       console.error("Failed to update inventory:", err);
       toast.error(
@@ -174,7 +220,7 @@ export default function Inventory() {
             />
             <input
               type="text"
-              placeholder="Search by name or product ID..."
+              placeholder="Search by name, variant or product ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input-field"
@@ -245,56 +291,212 @@ export default function Inventory() {
               </thead>
               <tbody>
                 {filteredProducts.map((product) => {
-                  const stock = getStockStatus(product);
+                  const variants = product.variants ?? [];
+                  const hasVariants = variants.length > 0;
+                  const isExpanded = expandedIds.has(product.id);
+                  const stock = getProductAggregateStatus(product);
+                  const totalQty = hasVariants
+                    ? variants.reduce((sum, v) => sum + (v.available_quantity ?? 0), 0)
+                    : (product.available_quantity ?? 0);
                   return (
-                    <tr
-                      key={product.id}
-                      style={{ borderBottom: "1px solid var(--border-color)" }}
-                    >
-                      <td style={{ padding: "16px" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                          }}
-                        >
-                          <ProductImage
-                            src={getProductThumbnail(product)}
-                            alt={product.name}
-                          />
-                          <span style={{ fontWeight: 600 }}>{product.name}</span>
-                        </div>
-                      </td>
-                      <td
+                    <Fragment key={product.id}>
+                      <tr
                         style={{
-                          padding: "16px",
-                          color: "var(--text-secondary)",
-                          fontFamily: "monospace",
-                          fontSize: "0.85rem",
+                          borderBottom:
+                            hasVariants && isExpanded
+                              ? "none"
+                              : "1px solid var(--border-color)",
                         }}
                       >
-                        #{product.id}
-                      </td>
-                      <td style={{ padding: "16px", fontWeight: 600 }}>
-                        {product.available_quantity ?? 0}
-                      </td>
-                      <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
-                        {product.low_stock_threshold ?? "—"}
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <span className={`badge badge-${stock.variant}`}>
-                          {stock.label}
-                        </span>
-                      </td>
-                      <td style={{ padding: "16px", textAlign: "right" }}>
-                        <IconButton
-                          icon={<Edit2 size={16} />}
-                          tooltip="Update inventory"
-                          onClick={() => handleOpenEdit(product)}
-                        />
-                      </td>
-                    </tr>
+                        <td style={{ padding: "16px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                            }}
+                          >
+                            {hasVariants && (
+                              <IconButton
+                                icon={
+                                  isExpanded ? (
+                                    <ChevronDown size={16} />
+                                  ) : (
+                                    <ChevronRight size={16} />
+                                  )
+                                }
+                                tooltip={isExpanded ? "Hide variants" : "Show variants"}
+                                onClick={() => toggleExpanded(product.id)}
+                              />
+                            )}
+                            <ProductImage
+                              src={getProductThumbnail(product)}
+                              alt={product.name}
+                            />
+                            <span style={{ fontWeight: 600 }}>{product.name}</span>
+                            {hasVariants && (
+                              <span
+                                className="badge badge-secondary"
+                                style={{ fontWeight: 600 }}
+                              >
+                                {variants.length} variant
+                                {variants.length === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: "16px",
+                            color: "var(--text-secondary)",
+                            fontFamily: "monospace",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          #{product.id}
+                        </td>
+                        <td style={{ padding: "16px", fontWeight: 600 }}>
+                          {totalQty}
+                          {hasVariants && (
+                            <span
+                              style={{
+                                fontWeight: 400,
+                                fontSize: "0.75rem",
+                                color: "var(--text-secondary)",
+                                marginLeft: "6px",
+                              }}
+                            >
+                              total
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "16px", color: "var(--text-secondary)" }}>
+                          {hasVariants ? "—" : (product.low_stock_threshold ?? "—")}
+                        </td>
+                        <td style={{ padding: "16px" }}>
+                          <span className={`badge badge-${stock.variant}`}>
+                            {stock.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "16px", textAlign: "right" }}>
+                          {!hasVariants && (
+                            <IconButton
+                              icon={<Edit2 size={16} />}
+                              tooltip="Update inventory"
+                              onClick={() =>
+                                handleOpenEdit({
+                                  product,
+                                  available_quantity: product.available_quantity,
+                                  low_stock_threshold: product.low_stock_threshold,
+                                })
+                              }
+                            />
+                          )}
+                        </td>
+                      </tr>
+                      {hasVariants && isExpanded && (
+                        <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                          <td colSpan={6} style={{ padding: "0 16px 16px" }}>
+                            <div
+                              style={{
+                                background: "var(--bg-primary)",
+                                borderRadius: "var(--radius-md)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <table style={{ width: "100%", textAlign: "left" }}>
+                                <thead>
+                                  <tr
+                                    style={{
+                                      fontSize: "0.8rem",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Variant
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Weight
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Available Qty
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Low Stock Threshold
+                                    </th>
+                                    <th style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                      Status
+                                    </th>
+                                    <th
+                                      style={{
+                                        padding: "10px 12px",
+                                        fontWeight: 500,
+                                        textAlign: "right",
+                                      }}
+                                    >
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {variants.map((variant, index) => {
+                                    const variantStock = getStockStatus(variant);
+                                    return (
+                                      <tr
+                                        key={variant.id ?? index}
+                                        style={{ fontSize: "0.85rem" }}
+                                      >
+                                        <td style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                          {variant.label}
+                                        </td>
+                                        <td style={{ padding: "10px 12px" }}>
+                                          {variant.weight}
+                                        </td>
+                                        <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                                          {variant.available_quantity ?? 0}
+                                        </td>
+                                        <td
+                                          style={{
+                                            padding: "10px 12px",
+                                            color: "var(--text-secondary)",
+                                          }}
+                                        >
+                                          {variant.low_stock_threshold ?? "—"}
+                                        </td>
+                                        <td style={{ padding: "10px 12px" }}>
+                                          <span className={`badge badge-${variantStock.variant}`}>
+                                            {variantStock.label}
+                                          </span>
+                                        </td>
+                                        <td
+                                          style={{
+                                            padding: "10px 12px",
+                                            textAlign: "right",
+                                          }}
+                                        >
+                                          <IconButton
+                                            icon={<Edit2 size={16} />}
+                                            tooltip="Update variant inventory"
+                                            onClick={() =>
+                                              handleOpenEdit({
+                                                product,
+                                                variant,
+                                                available_quantity: variant.available_quantity,
+                                                low_stock_threshold: variant.low_stock_threshold,
+                                              })
+                                            }
+                                          />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -303,9 +505,9 @@ export default function Inventory() {
         </div>
       </Card>
 
-      {editingProduct && (
+      {editingRow && (
         <Modal
-          onClose={() => setEditingProduct(null)}
+          onClose={() => setEditingRow(null)}
           title="Update Inventory"
           icon={<Boxes size={20} />}
           iconColor="var(--accent-primary)"
@@ -324,13 +526,16 @@ export default function Inventory() {
             }}
           >
             <ProductImage
-              src={getProductThumbnail(editingProduct)}
-              alt={editingProduct.name}
+              src={getProductThumbnail(editingRow.product)}
+              alt={editingRow.product.name}
             />
             <div>
-              <div style={{ fontWeight: 600 }}>{editingProduct.name}</div>
+              <div style={{ fontWeight: 600 }}>
+                {editingRow.product.name}
+                {editingRow.variant && ` — ${editingRow.variant.label || editingRow.variant.weight}`}
+              </div>
               <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                Product ID #{editingProduct.id}
+                Product ID #{editingRow.product.id}
               </div>
             </div>
           </div>
@@ -365,7 +570,7 @@ export default function Inventory() {
           >
             <Button
               variant="secondary"
-              onClick={() => setEditingProduct(null)}
+              onClick={() => setEditingRow(null)}
               disabled={isSaving}
             >
               Cancel

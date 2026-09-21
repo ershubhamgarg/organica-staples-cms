@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -44,6 +44,31 @@ import {
   type CodPaymentMode,
 } from "../utils/collabOrder";
 import { getShippingStatusColor, formatShippingStatusLabel } from "../utils/shippingStatus";
+
+const UNCATEGORIZED = "Uncategorized";
+
+// Stable sort by category (first-seen order, "Uncategorized" last) so an
+// order's items read grouped by product category.
+function sortItemsByCategory(items: Order["items"]) {
+  const order: string[] = [];
+  for (const item of items) {
+    const cat = (item.category as string | undefined) || UNCATEGORIZED;
+    if (!order.includes(cat)) order.push(cat);
+  }
+  order.sort((a, b) =>
+    a === UNCATEGORIZED ? 1 : b === UNCATEGORIZED ? -1 : 0,
+  );
+  return items
+    .map((item, idx) => ({
+      item,
+      idx,
+      category: (item.category as string | undefined) || UNCATEGORIZED,
+    }))
+    .sort(
+      (a, b) =>
+        order.indexOf(a.category) - order.indexOf(b.category) || a.idx - b.idx,
+    );
+}
 
 const canRefundOrder = (order: Order) =>
   order.payment_method === "razorpay" &&
@@ -802,9 +827,18 @@ export default function OrderDetails() {
             <div
               style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
             >
-              {order.items.map((item, idx) => (
+              {sortItemsByCategory(order.items).map(
+                ({ item, idx, category }, pos, arr) => (
+                <Fragment key={idx}>
+                {(pos === 0 || arr[pos - 1].category !== category) && (
+                  <div
+                    className="eyebrow"
+                    style={{ marginTop: pos === 0 ? 0 : "0.5rem" }}
+                  >
+                    {category}
+                  </div>
+                )}
                 <div
-                  key={idx}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -827,7 +861,31 @@ export default function OrderDetails() {
                       size={50}
                     />
                     <div>
-                      <div style={{ fontWeight: 600 }}>{item.name}</div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          display: "flex",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "8px",
+                        }}
+                      >
+                        {item.name}
+                        {(item.variantLabel || item.weight) && (
+                          <span
+                            className="badge badge-secondary"
+                            style={{ gap: "4px", fontWeight: 500 }}
+                            data-tooltip={
+                              item.variantLabel
+                                ? "Selected variant"
+                                : "Pack size"
+                            }
+                          >
+                            <Weight size={11} />
+                            {item.variantLabel || item.weight}
+                          </span>
+                        )}
+                      </div>
                       <div
                         style={{
                           fontSize: "0.85rem",
@@ -842,6 +900,7 @@ export default function OrderDetails() {
                     ₹{formatCurrency(item.price * item.quantity)}
                   </div>
                 </div>
+                </Fragment>
               ))}
               <div
                 style={{

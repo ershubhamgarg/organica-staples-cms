@@ -26,7 +26,7 @@ import Button from "../components/ui/Button";
 import IconButton from "../components/ui/IconButton";
 import ProductImage from "../components/ui/ProductImage";
 import { getProductThumbnail } from "../utils/productImage";
-import { getStockStatus } from "../utils/stockStatus";
+import { getStockStatus, getProductAggregateStatus } from "../utils/stockStatus";
 import { formatCurrency } from "../utils/currency";
 import { parseWeightKg } from "../utils/weight";
 import { displayNumber, parseNumberInput } from "../utils/number";
@@ -56,23 +56,6 @@ const STOCK_STATUS_RANK: Record<string, number> = {
   low_stock: 1,
   out_of_stock: 2,
 };
-
-// A product with variants has no single meaningful stock level of its own
-// — each size/weight tracks its own quantity — so its status badge reflects
-// the worst case across all variants rather than the (unused) base fields.
-function getProductAggregateStatus(product: Product) {
-  if (!product.variants || product.variants.length === 0) {
-    return getStockStatus(product);
-  }
-  const statuses = product.variants.map((v) => getStockStatus(v).status);
-  if (statuses.every((s) => s === "out_of_stock")) {
-    return getStockStatus({ available_quantity: 0, low_stock_threshold: 0 });
-  }
-  if (statuses.some((s) => s === "out_of_stock" || s === "low_stock")) {
-    return { status: "low_stock" as const, label: "Low Stock", variant: "warning" };
-  }
-  return { status: "in_stock" as const, label: "In Stock", variant: "success" };
-}
 
 function compareProducts(a: Product, b: Product, field: SortField): number {
   switch (field) {
