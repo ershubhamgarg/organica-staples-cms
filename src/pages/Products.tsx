@@ -154,6 +154,7 @@ export default function Products() {
     weight: "",
     benefits: [],
     isVisible: true,
+    is_best_seller: false,
     is_combo_eligible: false,
     available_quantity: 0,
     low_stock_threshold: 5,
@@ -164,6 +165,14 @@ export default function Products() {
     variants: [],
   };
   const [formData, setFormData] = useState<ProductFormData>(blankFormData);
+
+  // The database allows at most 3 best sellers and rejects a 4th; mirroring
+  // that here means the admin is told up front rather than after saving.
+  const MAX_BEST_SELLERS = 3;
+  const otherBestSellers = products.filter(
+    (p) => p.is_best_seller && p.id !== editingProduct?.id,
+  );
+  const bestSellerSlotsFull = otherBestSellers.length >= MAX_BEST_SELLERS;
 
   useEffect(() => {
     fetchProducts();
@@ -191,6 +200,7 @@ export default function Products() {
         weight: product.weight,
         benefits: product.benefits || [],
         isVisible: product.isVisible ?? true,
+        is_best_seller: product.is_best_seller ?? false,
         is_combo_eligible: product.is_combo_eligible ?? false,
         available_quantity: product.available_quantity ?? 0,
         low_stock_threshold: product.low_stock_threshold ?? 5,
@@ -284,14 +294,22 @@ export default function Products() {
         low_stock_threshold,
         launch_date,
         variants,
+        is_best_seller,
         ...productFields
       } = formData;
       const inventoryUpdates = {
         available_quantity: available_quantity ?? 0,
         low_stock_threshold: low_stock_threshold ?? 5,
       };
+      // Only send the best-seller flag when it is actually being changed.
+      // Every other product save then behaves exactly as before — including
+      // before the best-sellers migration has been run, when the column does
+      // not exist yet and sending it would fail the whole save.
+      const wasBestSeller = editingProduct?.is_best_seller ?? false;
+      const bestSellerChanged = (is_best_seller ?? false) !== wasBestSeller;
       const productPayload = {
         ...productFields,
+        ...(bestSellerChanged ? { is_best_seller: is_best_seller ?? false } : {}),
         launch_date: launch_date ? new Date(launch_date).toISOString() : null,
       };
 
@@ -675,6 +693,11 @@ export default function Products() {
                             {product.isVisible === false && (
                               <span className="badge badge-secondary">
                                 Hidden
+                              </span>
+                            )}
+                            {product.is_best_seller && (
+                              <span className="badge badge-warning">
+                                Best Seller
                               </span>
                             )}
                           </div>
@@ -1520,6 +1543,49 @@ export default function Products() {
                   />
                   Visible on store
                 </label>
+              </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    cursor:
+                      bestSellerSlotsFull && !formData.is_best_seller
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      bestSellerSlotsFull && !formData.is_best_seller ? 0.5 : 1,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.is_best_seller ?? false}
+                    disabled={bestSellerSlotsFull && !formData.is_best_seller}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        is_best_seller: e.target.checked,
+                      })
+                    }
+                    style={{ width: "auto" }}
+                  />
+                  Best selling — feature on the home page
+                </label>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-secondary)",
+                    marginTop: "0.25rem",
+                    display: "block",
+                  }}
+                >
+                  {bestSellerSlotsFull && !formData.is_best_seller
+                    ? `All ${MAX_BEST_SELLERS} best-seller slots are taken (${otherBestSellers
+                        .map((p) => p.name)
+                        .join(", ")}). Unmark one to feature this product.`
+                    : `Shown in the opening section of the home page. ${otherBestSellers.length + (formData.is_best_seller ? 1 : 0)} of ${MAX_BEST_SELLERS} slots used.`}
+                </span>
               </div>
               <div className="form-group" style={{ gridColumn: "span 2" }}>
                 <label

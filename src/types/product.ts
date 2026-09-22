@@ -45,6 +45,11 @@ export interface Product {
   review_count?: number;
   isVisible?: boolean | null;
   /**
+   * Featured in the storefront's home page best-sellers section. At most 3
+   * products at a time — enforced by a database trigger, mirrored in the form.
+   */
+  is_best_seller?: boolean;
+  /**
    * Can be picked in the storefront combo builder. Only meaningful for a
    * product with no variants — a product that has variants is bought as a
    * variant, so eligibility is set per variant instead.
