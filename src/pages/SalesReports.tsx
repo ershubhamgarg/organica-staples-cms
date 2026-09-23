@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { FileSpreadsheet, FileText, FileDown, Receipt } from "lucide-react";
+import {
+  FileSpreadsheet,
+  FileText,
+  FileDown,
+  Receipt,
+  Info,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
@@ -44,16 +52,33 @@ function StatCard({
   value,
   color,
   sub,
+  tooltip,
 }: {
   label: string;
   value: string;
   color?: string;
   sub?: string;
+  tooltip?: string;
 }) {
   return (
     <Card padding="1rem 1.25rem">
-      <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          fontSize: "0.8rem",
+          color: "var(--text-secondary)",
+        }}
+      >
         {label}
+        {tooltip && (
+          <Info
+            size={13}
+            data-tooltip={tooltip}
+            style={{ cursor: "help", flexShrink: 0 }}
+          />
+        )}
       </div>
       <div
         style={{
@@ -88,6 +113,7 @@ export default function SalesReports() {
   const [granularity, setGranularity] = useState<Granularity>("day");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(false);
 
   const range = useMemo(
     () =>
@@ -217,6 +243,97 @@ export default function SalesReports() {
       />
 
       <Card style={{ marginBottom: "1.5rem" }}>
+        <button
+          type="button"
+          onClick={() => setShowGlossary((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            width: "100%",
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            color: "inherit",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Info size={18} color="var(--accent-primary)" />
+            <h3 style={{ fontSize: "1rem" }}>What do these terms mean?</h3>
+          </div>
+          {showGlossary ? (
+            <ChevronDown size={18} color="var(--text-secondary)" />
+          ) : (
+            <ChevronRight size={18} color="var(--text-secondary)" />
+          )}
+        </button>
+
+        {showGlossary && (
+          <div
+            style={{
+              marginTop: "1.25rem",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: "1rem",
+              fontSize: "0.85rem",
+              lineHeight: 1.5,
+            }}
+          >
+            {[
+              [
+                "Gross Revenue",
+                "The full value of items sold, before any discount, shipping, or fees are applied — the sticker-price total.",
+              ],
+              [
+                "Total Discount",
+                "Everything knocked off that gross figure — product-level discounts plus coupon codes.",
+              ],
+              [
+                "Net Revenue",
+                "What customers actually paid: Gross Revenue minus Total Discount, plus shipping, convenience fees, and COD handling charges. This is the headline revenue number.",
+              ],
+              [
+                "Wholesale Cost",
+                "What the goods themselves cost — quantity × wholesale price per item, before packaging, shipping, or payment gateway costs.",
+              ],
+              [
+                "Total Profit",
+                "Net Revenue minus the full cost to company (wholesale cost + packaging/sticker cost + actual shipping cost + payment gateway fee). Can be negative on individual orders.",
+              ],
+              [
+                "Avg Order Value",
+                "Net Revenue divided by the number of orders counted as revenue — barter/collab orders and unconfirmed COD orders are excluded from both sides of that division.",
+              ],
+              [
+                "COD Charges",
+                "The handling fee charged on Cash on Delivery orders — a small revenue line, not the COD order's full value.",
+              ],
+              [
+                "Pending COD Collection",
+                "The order value of COD orders where staff haven't yet confirmed the cash/card/UPI was actually collected. Excluded from every revenue/profit figure above until confirmed on the order's page.",
+              ],
+              [
+                "Collab Orders",
+                "Barter/influencer orders — product shipped for free in exchange for content. Treated as marketing spend, not a sale, so excluded from revenue.",
+              ],
+              [
+                "Refunds",
+                "Amount returned to customers on orders where a Razorpay refund has actually processed.",
+              ],
+            ].map(([term, def]) => (
+              <div key={term}>
+                <div style={{ fontWeight: 600, marginBottom: "2px" }}>
+                  {term}
+                </div>
+                <div style={{ color: "var(--text-secondary)" }}>{def}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ marginBottom: "1.5rem" }}>
         <div
           style={{
             display: "flex",
@@ -340,20 +457,24 @@ export default function SalesReports() {
               label="Net Revenue"
               value={`₹${formatCurrency(summary.netRevenue)}`}
               color="var(--success)"
+              tooltip="Gross Revenue − discounts + shipping/fees — what was actually paid"
             />
             <StatCard
               label="Gross Revenue"
               value={`₹${formatCurrency(summary.grossRevenue)}`}
+              tooltip="Item value before any discount, shipping, or fees"
             />
             <StatCard
               label="Total Discount"
               value={`₹${formatCurrency(summary.totalDiscount)}`}
               color="var(--danger)"
+              tooltip="Product discounts + coupon codes applied"
             />
             <StatCard
               label="Total Profit"
               value={`₹${formatCurrency(summary.totalProfit)}`}
               color={summary.totalProfit >= 0 ? "var(--success)" : "var(--danger)"}
+              tooltip="Net Revenue minus wholesale + packaging + shipping + gateway cost"
             />
             <StatCard
               label="Avg Order Value"
@@ -377,6 +498,7 @@ export default function SalesReports() {
                 value={String(summary.collabOrders)}
                 sub={`₹${formatCurrency(summary.collabCost)} cost absorbed`}
                 color="var(--warning)"
+                tooltip="Product given for content, not a sale — excluded from revenue"
               />
             )}
             {summary.pendingCodOrders > 0 && (
@@ -385,6 +507,7 @@ export default function SalesReports() {
                 value={`₹${formatCurrency(summary.pendingCodAmount)}`}
                 sub={`${summary.pendingCodOrders} order${summary.pendingCodOrders === 1 ? "" : "s"} — excluded above until confirmed`}
                 color="var(--warning)"
+                tooltip="COD not yet confirmed collected — excluded until confirmed"
               />
             )}
             <StatCard
@@ -392,6 +515,7 @@ export default function SalesReports() {
               value={`₹${formatCurrency(summary.refundedAmount)}`}
               sub={`${summary.refundedCount} processed`}
               color="var(--warning)"
+              tooltip="Amount returned on processed Razorpay refunds"
             />
             <StatCard
               label="Items Sold"

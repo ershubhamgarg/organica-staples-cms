@@ -17,6 +17,7 @@ import {
   Download,
   IndianRupee,
   MessageSquare,
+  MessageCircle,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -35,6 +36,11 @@ import { getOrderGrossWeightKg, formatWeight } from "../utils/weight";
 import { formatDateTime } from "../utils/date";
 import { displayNumber, parseNumberInput } from "../utils/number";
 import { isLocalOrder } from "../utils/localOrder";
+import {
+  buildOrderConfirmationMessage,
+  formatWhatsAppNumber,
+  getWhatsAppLink,
+} from "../utils/whatsapp";
 import {
   formatPaymentMethodLabel,
   isCollabOrder,
@@ -354,6 +360,17 @@ export default function OrderDetails() {
     } finally {
       setIsCancelling(false);
     }
+  };
+
+  const handleSendWhatsAppConfirmation = () => {
+    if (!order) return;
+    const phone = formatWhatsAppNumber(order.delivery_address?.phone);
+    if (!phone) {
+      toast.error("No phone number on file for this order.");
+      return;
+    }
+    const message = buildOrderConfirmationMessage(order);
+    window.open(getWhatsAppLink(phone, message), "_blank", "noopener,noreferrer");
   };
 
   const handleAddRemark = async () => {
@@ -1256,25 +1273,41 @@ export default function OrderDetails() {
                 <MapPin size={20} color="var(--accent-primary)" />
                 <h3 style={{ fontSize: "1.1rem" }}>Delivery Address</h3>
               </div>
-              <CopyButton
-                value={[
-                  order.delivery_address.name,
-                  order.delivery_address.phone,
-                  order.delivery_address.email,
-                  order.delivery_address.address,
-                  [
-                    order.delivery_address.city,
-                    order.delivery_address.state,
-                    order.delivery_address.zipCode,
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<MessageCircle size={14} />}
+                  disabled={!formatWhatsAppNumber(order.delivery_address.phone)}
+                  onClick={handleSendWhatsAppConfirmation}
+                  data-tooltip={
+                    formatWhatsAppNumber(order.delivery_address.phone)
+                      ? undefined
+                      : "No phone number on file for this order"
+                  }
+                >
+                  Send WhatsApp Confirmation
+                </Button>
+                <CopyButton
+                  value={[
+                    order.delivery_address.name,
+                    order.delivery_address.phone,
+                    order.delivery_address.email,
+                    order.delivery_address.address,
+                    [
+                      order.delivery_address.city,
+                      order.delivery_address.state,
+                      order.delivery_address.zipCode,
+                    ]
+                      .filter(Boolean)
+                      .join(", "),
+                    order.delivery_address.country,
                   ]
                     .filter(Boolean)
-                    .join(", "),
-                  order.delivery_address.country,
-                ]
-                  .filter(Boolean)
-                  .join("\n")}
-                label="Address"
-              />
+                    .join("\n")}
+                  label="Address"
+                />
+              </div>
             </div>
             <div
               style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "4px" }}
