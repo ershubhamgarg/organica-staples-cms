@@ -31,7 +31,10 @@ function itemLine(item: Order["items"][number]): string {
  * there's no WhatsApp Business API wired up; this is a manually-triggered,
  * pre-filled draft the admin reviews before sending.
  */
-export function buildOrderConfirmationMessage(order: Order): string {
+export function buildOrderConfirmationMessage(
+  order: Order,
+  invoiceUrl?: string | null,
+): string {
   const name = order.delivery_address?.name?.trim().split(" ")[0] || "there";
   const shortId = order.id.slice(0, 8).toUpperCase();
   const items = (order.items ?? []).map(itemLine).join("\n");
@@ -50,6 +53,7 @@ export function buildOrderConfirmationMessage(order: Order): string {
     "",
     "Get ready to restock your pantry with pure, chemical-free, ethically-sourced staples — the way nature intended.",
     "",
+    ...(invoiceUrl ? [`🧾 Your GST Invoice: ${invoiceUrl}`, ""] : []),
     "Thank you for choosing ANNVRIKSH. Here's to wholesome living! 🙏",
     "",
     "— Team ANNVRIKSH",
@@ -57,5 +61,14 @@ export function buildOrderConfirmationMessage(order: Order): string {
 }
 
 export function getWhatsAppLink(phone: string, message: string): string {
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  // `wa.me` is a redirector — it forwards to api.whatsapp.com, and that
+  // extra hop is a known source of mangled/dropped emoji in the prefilled
+  // text (emoji outside the Basic Multilingual Plane, i.e. most of the ones
+  // used above, need a 4-byte UTF-8 sequence, and the redirect's own
+  // decode/re-encode step doesn't always survive that intact). Linking
+  // straight to api.whatsapp.com skips that hop. The %-encoding itself was
+  // already verified correct (encodeURIComponent("🌿") → the exact standard
+  // UTF-8 bytes for U+1F33F) — this isn't an encoding bug on our side, it's
+  // wa.me's redirect that drops it.
+  return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
 }

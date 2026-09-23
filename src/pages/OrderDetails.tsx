@@ -18,6 +18,7 @@ import {
   IndianRupee,
   MessageSquare,
   MessageCircle,
+  Paperclip,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -113,6 +114,8 @@ export default function OrderDetails() {
   const [shipAwbCode, setShipAwbCode] = useState("");
   const [isSyncingShipping, setIsSyncingShipping] = useState(false);
   const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [isSharingInvoice, setIsSharingInvoice] = useState(false);
   const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [standaloneRefundMode, setStandaloneRefundMode] =
@@ -362,15 +365,73 @@ export default function OrderDetails() {
     }
   };
 
-  const handleSendWhatsAppConfirmation = () => {
+  const handleSendWhatsAppConfirmation = async () => {
     if (!order) return;
     const phone = formatWhatsAppNumber(order.delivery_address?.phone);
     if (!phone) {
       toast.error("No phone number on file for this order.");
       return;
     }
-    const message = buildOrderConfirmationMessage(order);
-    window.open(getWhatsAppLink(phone, message), "_blank", "noopener,noreferrer");
+
+    // Opened synchronously, before the invoice-link fetch below, so it
+    // isn't treated as a popup and blocked — browsers only allow
+    // window.open without prompting when it's a direct result of the
+    // click, not of an async callback that resolves later. Deliberately
+    // NOT passing "noopener" here — that flag makes window.open() return
+    // null even on success (by design, to sever the opener reference),
+    // which broke this exact blank-placeholder-tab trick: with no
+    // reference, the code below had no tab to navigate and fell back to a
+    // second window.open() after the fetch, which the browser then treated
+    // as an unrequested popup and silently blocked. api.whatsapp.com is a
+    // fixed, trusted destination, so skipping noopener here is safe.
+    const whatsappWindow = window.open("", "_blank");
+
+    let invoiceUrl: string | null = null;
+    if (order.invoice_pdf_path) {
+      try {
+        setIsSendingWhatsApp(true);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session) {
+          const response = await fetch("/api/orders/invoice-link", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ orderId: order.id }),
+          });
+          const result = await response.json().catch(() => null);
+          if (response.ok && result?.url) {
+            invoiceUrl = result.url;
+          }
+        }
+      } catch (err) {
+        // Non-fatal — the confirmation message is still useful without the
+        // invoice link, so a failed fetch here shouldn't block sending it.
+        console.error("Failed to create invoice link:", err);
+      } finally {
+        setIsSendingWhatsApp(false);
+      }
+    }
+
+    const message = buildOrderConfirmationMessage(order, invoiceUrl);
+    const link = getWhatsAppLink(phone, message);
+    if (whatsappWindow) {
+      whatsappWindow.location.href = link;
+    } else {
+      // Only reachable if the very first window.open() above was already
+      // blocked outright (e.g. the browser's popup blocker is set to block
+      // everything) — this second attempt is likely to be blocked too.
+      const opened = window.open(link, "_blank");
+      if (!opened) {
+        toast.error(
+          "Your browser blocked the WhatsApp popup — please allow popups for this site and try again.",
+        );
+      }
+    }
   };
 
   const handleAddRemark = async () => {
@@ -577,46 +638,52 @@ export default function OrderDetails() {
     }
   };
 
+  // Shared by the manual "Download" button and the WhatsApp
+  // share-with-attachment flow below — both need the same authenticated
+  // fetch and the same "did we actually get a PDF back" sanity check.
+  const fetchInvoicePdfBlob = async (targetOrder: Order): Promise<Blob> => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error("You must be signed in to access invoices.");
+    }
+
+    const response = await fetch(
+      `/api/orders/invoice?orderId=${encodeURIComponent(targetOrder.id)}`,
+      { headers: { Authorization: `Bearer ${session.access_token}` } },
+    );
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw new Error(result?.error || "Failed to fetch invoice.");
+    }
+
+    // `response.ok` alone isn't proof of a PDF. The plain `vite` dev
+    // server doesn't run /api handlers — it answers 200 with the handler's
+    // own source (or index.html), which used to be saved as a ".pdf" that
+    // then opened blank. Check what actually came back before using it.
+    const blob = await response.blob();
+    const head = await blob.slice(0, 5).text();
+    if (head !== "%PDF-") {
+      throw new Error(
+        import.meta.env.DEV
+          ? "The local dev server can't serve /api routes, so this isn't a PDF. Run with `vercel dev`, or set VITE_API_PROXY_TARGET to a deployed CMS URL."
+          : "The server did not return a valid PDF. Please try again.",
+      );
+    }
+
+    return new Blob([blob], { type: "application/pdf" });
+  };
+
   const handleDownloadInvoice = async () => {
     if (!order) return;
 
     try {
       setIsDownloadingInvoice(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        toast.error("You must be signed in to download invoices.");
-        return;
-      }
-
-      const response = await fetch(
-        `/api/orders/invoice?orderId=${encodeURIComponent(order.id)}`,
-        { headers: { Authorization: `Bearer ${session.access_token}` } },
-      );
-
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.error || "Failed to download invoice.");
-      }
-
-      // `response.ok` alone isn't proof of a PDF. The plain `vite` dev
-      // server doesn't run /api handlers — it answers 200 with the handler's
-      // own source (or index.html), which used to be saved as a ".pdf" that
-      // then opened blank. Check what actually came back before saving it.
-      const blob = await response.blob();
-      const head = await blob.slice(0, 5).text();
-      if (head !== "%PDF-") {
-        throw new Error(
-          import.meta.env.DEV
-            ? "The local dev server can't serve /api routes, so this isn't a PDF. Run with `vercel dev`, or set VITE_API_PROXY_TARGET to a deployed CMS URL."
-            : "The server did not return a valid PDF. Please try again.",
-        );
-      }
-
-      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const blob = await fetchInvoicePdfBlob(order);
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = `${(order.invoice_number || order.id).replace(/\//g, "-")}.pdf`;
@@ -633,6 +700,59 @@ export default function OrderDetails() {
       );
     } finally {
       setIsDownloadingInvoice(false);
+    }
+  };
+
+  // A wa.me / api.whatsapp.com deep link only ever supports pre-filled
+  // *text* — there is no URL parameter for attaching a file, so the
+  // "Send WhatsApp Confirmation" button above can only ever include a link
+  // to the invoice, never the file itself. The Web Share API is the one
+  // way a browser can hand an *actual file* to WhatsApp: it opens the
+  // device's native share sheet with the PDF, and the person shares it
+  // from there — but note this can't pre-select the customer's chat the
+  // way the direct link does; whoever shares picks the conversation
+  // themselves. Deliberately file-only, no message text bundled in here —
+  // that's sent separately via "Send WhatsApp Confirmation" above, since
+  // combining both in one share/paste isn't reliable (WhatsApp's
+  // share-target handling doesn't consistently support file + text
+  // together). Reliable on a phone (Chrome/Safari); most desktop browsers
+  // don't support sharing files this way at all, so the button is hidden
+  // there rather than shown and failing silently.
+  const canShareFiles =
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function" &&
+    typeof navigator.canShare === "function";
+
+  const handleShareInvoiceAttachment = async () => {
+    if (!order) return;
+
+    if (!order.invoice_pdf_path) {
+      toast.error("Invoice has not been generated for this order yet.");
+      return;
+    }
+
+    try {
+      setIsSharingInvoice(true);
+      const blob = await fetchInvoicePdfBlob(order);
+      const filename = `${(order.invoice_number || order.id).replace(/\//g, "-")}.pdf`;
+      const file = new File([blob], filename, { type: "application/pdf" });
+
+      if (!navigator.canShare({ files: [file] })) {
+        toast.error("This browser can't share files directly — use the WhatsApp link button instead.");
+        return;
+      }
+
+      await navigator.share({ files: [file] });
+    } catch (err) {
+      // The user cancelling the native share sheet also lands here as an
+      // AbortError — that's a normal outcome, not a failure to report.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("Failed to share invoice:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to share invoice.",
+      );
+    } finally {
+      setIsSharingInvoice(false);
     }
   };
 
@@ -1279,6 +1399,7 @@ export default function OrderDetails() {
                   size="sm"
                   icon={<MessageCircle size={14} />}
                   disabled={!formatWhatsAppNumber(order.delivery_address.phone)}
+                  loading={isSendingWhatsApp}
                   onClick={handleSendWhatsAppConfirmation}
                   data-tooltip={
                     formatWhatsAppNumber(order.delivery_address.phone)
@@ -1288,6 +1409,18 @@ export default function OrderDetails() {
                 >
                   Send WhatsApp Confirmation
                 </Button>
+                {canShareFiles && order.invoice_pdf_path && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<Paperclip size={14} />}
+                    loading={isSharingInvoice}
+                    onClick={handleShareInvoiceAttachment}
+                    data-tooltip="Opens your device's share sheet with the actual invoice PDF attached — you pick the WhatsApp chat yourself"
+                  >
+                    Share Invoice PDF
+                  </Button>
+                )}
                 <CopyButton
                   value={[
                     order.delivery_address.name,
