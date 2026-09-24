@@ -62,7 +62,7 @@ export default async function handler(request: Request): Promise<Response> {
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("orders")
-    .select("id, invoice_pdf_path")
+    .select("id, invoice_number, invoice_pdf_path")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -77,9 +77,16 @@ export default async function handler(request: Request): Promise<Response> {
     );
   }
 
+  // Without `download`, Supabase serves the file with no
+  // Content-Disposition header at all, so the browser just renders the PDF
+  // inline instead of saving it — verified live (curl -I showed no
+  // content-disposition without this option, and "attachment" with it).
+  const filename = `${(order.invoice_number || orderId).replace(/\//g, "-")}.pdf`;
   const { data: signed, error: signError } = await supabaseAdmin.storage
     .from("invoices")
-    .createSignedUrl(order.invoice_pdf_path, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(order.invoice_pdf_path, SIGNED_URL_TTL_SECONDS, {
+      download: filename,
+    });
 
   if (signError || !signed) {
     return json(
