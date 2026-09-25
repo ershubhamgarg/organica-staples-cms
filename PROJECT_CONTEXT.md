@@ -998,6 +998,34 @@ header shows a count badge once there's at least one remark. `Orders.tsx`'s list
 matching "should be properly visible with each order" from the original request, not just
 discoverable one click away.
 
+### WhatsApp customer messages (`src/utils/whatsapp.ts`, `OrderDetails.tsx`)
+
+Three CTAs on the Delivery Address card, all manually-triggered drafts the admin reviews before
+sending (there's no WhatsApp Business API wired up — no message is ever sent automatically):
+
+- **"Send WhatsApp Confirmation"** — `buildOrderConfirmationMessage(order, invoiceUrl?)`: a warm
+  welcome + item list + total, with the invoice link folded in if one was created (see the
+  short-link section above). Opens `api.whatsapp.com` (not `wa.me` — see the emoji-encoding note
+  in that function) via a synchronously-opened blank tab that's redirected once the async
+  invoice-link fetch resolves, so it isn't treated as an unrequested popup.
+- **"Send Order Update"** — `buildOrderUpdateMessage(order)`: a shipment-status message, mirroring
+  the same progression `getUnifiedOrderStatus` (`shippingStatus.ts`) uses for the on-screen badge,
+  but phrased for the customer rather than the CMS: picked up → in transit → out for delivery →
+  delivered, plus a cancelled variant. Local (hand-delivered) orders skip all of that and use
+  `order.status` instead, since they never have a courier/AWB/tracking link by design. Only
+  `in_transit`/`out_for_delivery`/`awb_assigned`/`created` include the courier name, AWB, and
+  `shiprocket_tracking_url` — a `delivered` or `cancelled` message has nothing left to track, so
+  it stays link-free. No invoice-link-style async step here, so `window.open` runs directly with
+  the link ready — no placeholder-tab trick needed.
+- **"Share Invoice PDF"** — `handleShareInvoiceAttachment`, Web Share API
+  (`navigator.share({ files: [pdf] })`), file-only — deliberately no caption text bundled into the
+  same share call. WhatsApp's share-target handling doesn't reliably support a file and text
+  together (seen dropping the text entirely, or handing the file over twice); the message is sent
+  separately via the other two CTAs instead. Only shown when `navigator.share`/`canShare` exist
+  (mostly mobile — most desktop browsers can't share files this way at all), and can't pre-select
+  the customer's chat the way the other two buttons do — whoever shares picks the conversation
+  themselves.
+
 ## Development Workflow
 - Run development server: `npm run dev`
 - Build for production: `npm run build`

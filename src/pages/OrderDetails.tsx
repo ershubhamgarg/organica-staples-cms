@@ -19,6 +19,7 @@ import {
   MessageSquare,
   MessageCircle,
   Paperclip,
+  PackageCheck,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -39,6 +40,7 @@ import { displayNumber, parseNumberInput } from "../utils/number";
 import { isLocalOrder } from "../utils/localOrder";
 import {
   buildOrderConfirmationMessage,
+  buildOrderUpdateMessage,
   formatWhatsAppNumber,
   getWhatsAppLink,
 } from "../utils/whatsapp";
@@ -115,6 +117,7 @@ export default function OrderDetails() {
   const [isSyncingShipping, setIsSyncingShipping] = useState(false);
   const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [isSendingOrderUpdate, setIsSendingOrderUpdate] = useState(false);
   const [isSharingInvoice, setIsSharingInvoice] = useState(false);
   const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
   const [showRefundModal, setShowRefundModal] = useState(false);
@@ -431,6 +434,32 @@ export default function OrderDetails() {
           "Your browser blocked the WhatsApp popup — please allow popups for this site and try again.",
         );
       }
+    }
+  };
+
+  // Simpler than handleSendWhatsAppConfirmation above — no async
+  // invoice-link fetch in between, so window.open can run with the link
+  // ready immediately and doesn't need the placeholder-tab workaround.
+  const handleSendOrderUpdate = () => {
+    if (!order) return;
+    const phone = formatWhatsAppNumber(order.delivery_address?.phone);
+    if (!phone) {
+      toast.error("No phone number on file for this order.");
+      return;
+    }
+
+    setIsSendingOrderUpdate(true);
+    try {
+      const message = buildOrderUpdateMessage(order);
+      const link = getWhatsAppLink(phone, message);
+      const opened = window.open(link, "_blank");
+      if (!opened) {
+        toast.error(
+          "Your browser blocked the WhatsApp popup — please allow popups for this site and try again.",
+        );
+      }
+    } finally {
+      setIsSendingOrderUpdate(false);
     }
   };
 
@@ -1408,6 +1437,21 @@ export default function OrderDetails() {
                   }
                 >
                   Send WhatsApp Confirmation
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<PackageCheck size={14} />}
+                  disabled={!formatWhatsAppNumber(order.delivery_address.phone)}
+                  loading={isSendingOrderUpdate}
+                  onClick={handleSendOrderUpdate}
+                  data-tooltip={
+                    formatWhatsAppNumber(order.delivery_address.phone)
+                      ? "Sends the current shipment status, with the tracking link if one exists"
+                      : "No phone number on file for this order"
+                  }
+                >
+                  Send Order Update
                 </Button>
                 {canShareFiles && order.invoice_pdf_path && (
                   <Button

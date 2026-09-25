@@ -1,5 +1,6 @@
 import type { Order } from "../store/orderStore";
 import { formatCurrency } from "./currency";
+import { isLocalOrder } from "./localOrder";
 
 /**
  * Normalizes a stored delivery-address phone number (typically a bare
@@ -55,6 +56,69 @@ export function buildOrderConfirmationMessage(
     "",
     ...(invoiceUrl ? [`🧾 Your GST Invoice: ${invoiceUrl}`, ""] : []),
     "Thank you for choosing ANNVRIKSH. Here's to wholesome living! 🙏",
+    "",
+    "— Team ANNVRIKSH",
+  ].join("\n");
+}
+
+/**
+ * A status-appropriate shipment update for the admin to send over
+ * WhatsApp — mirrors the same shipment-progress reasoning
+ * getUnifiedOrderStatus (shippingStatus.ts) uses for the on-screen badge,
+ * but as a customer-facing message rather than a CMS label. Local
+ * (hand-delivered) orders never get a courier/AWB/tracking link by
+ * design, so they go through order.status instead of shipping_status.
+ */
+export function buildOrderUpdateMessage(order: Order): string {
+  const name = order.delivery_address?.name?.trim().split(" ")[0] || "there";
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const local = isLocalOrder(order);
+  const shippingStatus = order.shipping_status?.toLowerCase() ?? null;
+
+  let statusLine: string;
+  // Only Shiprocket-tracked shipments (not local/hand-delivered ones) ever
+  // have a real courier/AWB/tracking link to include.
+  let includeTracking = false;
+
+  if (order.status === "cancelled") {
+    statusLine = `Your order *#${shortId}* has been cancelled. If this wasn't expected, just reply here — we're happy to help. 💬`;
+  } else if (local) {
+    statusLine =
+      order.status === "delivered"
+        ? `Your order *#${shortId}* has been hand-delivered! We hope you enjoy your fresh pantry essentials. 💚`
+        : `Your order *#${shortId}* is being prepared for hand delivery and will reach you soon! 🌿`;
+  } else if (shippingStatus === "delivered" || order.status === "delivered") {
+    statusLine = `Your order *#${shortId}* has been delivered! We hope you enjoy your fresh pantry essentials. 💚`;
+  } else if (shippingStatus === "out_for_delivery") {
+    statusLine = `Exciting news — your order *#${shortId}* is out for delivery today and should reach you very soon! 📦`;
+    includeTracking = true;
+  } else if (shippingStatus === "in_transit") {
+    statusLine = `Your order *#${shortId}* is on its way and getting closer to you every day! 🚚`;
+    includeTracking = true;
+  } else if (shippingStatus === "awb_assigned" || shippingStatus === "created") {
+    statusLine = `Your order *#${shortId}* has been picked up by our courier partner and is now on its way to you! 🚚`;
+    includeTracking = true;
+  } else {
+    statusLine = `Your order *#${shortId}* is being packed with care and will be shipped very soon! 📦`;
+  }
+
+  const courierLine =
+    includeTracking && order.shiprocket_courier_name
+      ? `Courier: ${order.shiprocket_courier_name}${order.shiprocket_awb_code ? ` (AWB: ${order.shiprocket_awb_code})` : ""}`
+      : null;
+  const trackingLine =
+    includeTracking && order.shiprocket_tracking_url
+      ? `📍 Track your shipment: ${order.shiprocket_tracking_url}`
+      : null;
+
+  return [
+    `Hi ${name}! 🌿`,
+    "",
+    statusLine,
+    ...(courierLine ? ["", courierLine] : []),
+    ...(trackingLine ? ["", trackingLine] : []),
+    "",
+    "Thank you for shopping with ANNVRIKSH! 🙏",
     "",
     "— Team ANNVRIKSH",
   ].join("\n");
