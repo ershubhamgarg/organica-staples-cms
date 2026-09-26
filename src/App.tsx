@@ -16,6 +16,7 @@ import Coupons from "./pages/Coupons";
 import Combos from "./pages/Combos";
 import LaunchInterests from "./pages/LaunchInterests";
 import Customers from "./pages/Customers";
+import Masters from "./pages/Masters";
 import SalesReports from "./pages/SalesReports";
 import Login from "./pages/Login";
 import { useAuthStore } from "./store/authStore";
@@ -79,6 +80,7 @@ function App() {
             <Route path="combos" element={<Combos />} />
             <Route path="launch-interests" element={<LaunchInterests />} />
             <Route path="customers" element={<Customers />} />
+            <Route path="masters" element={<Masters />} />
           </Route>
         </Route>
 

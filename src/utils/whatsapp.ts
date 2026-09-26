@@ -124,6 +124,36 @@ export function buildOrderUpdateMessage(order: Order): string {
   ].join("\n");
 }
 
+const STORE_URL =
+  (import.meta.env.VITE_STORE_URL as string | undefined)?.trim() ||
+  "https://annvriksh.com";
+
+/**
+ * A "time to refill your pantry" promo nudge for a customer whose last order
+ * has gone quiet (see reorderReminder.ts). Deliberately makes no discount
+ * promise — an offer code, if one is wanted, should be added here explicitly.
+ */
+export function buildReorderReminderMessage(
+  customerName: string,
+  daysSinceLastOrder: number,
+): string {
+  const name = customerName.trim().split(" ")[0] || "there";
+
+  return [
+    `Hi ${name}! 🌿✨`,
+    "",
+    `It's been ${daysSinceLastOrder} days since your last pantry order with ANNVRIKSH — and we've been missing you. 💚`,
+    "",
+    "Time to refill your kitchen with pure goodness: chemical-free dals, stone-ground spices, seeds and staples — ethically sourced and delivered fresh to your door. 🧺",
+    "",
+    `🛒 Restock your pantry: ${STORE_URL}`,
+    "",
+    "Here's to wholesome living! 🙏",
+    "",
+    "— Team ANNVRIKSH",
+  ].join("\n");
+}
+
 export function getWhatsAppLink(phone: string, message: string): string {
   // `wa.me` is a redirector — it forwards to api.whatsapp.com, and that
   // extra hop is a known source of mangled/dropped emoji in the prefilled

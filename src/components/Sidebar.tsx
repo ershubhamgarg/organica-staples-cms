@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,9 +11,13 @@ import {
   Blocks,
   Bell,
   BarChart3,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { useCustomerStore } from "../store/customerStore";
+import { useMasterStore } from "../store/masterStore";
+import { isReorderDue } from "../utils/reorderReminder";
 import logoMark from "../assets/annvriksh-mark.png";
 
 interface SidebarProps {
@@ -23,7 +28,31 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const { signOut, user } = useAuthStore();
-  const navItems = [
+  const customers = useCustomerStore((state) => state.customers);
+  const fetchCustomers = useCustomerStore((state) => state.fetchCustomers);
+  const reminderDays = useMasterStore(
+    (state) => state.settings.reorder_reminder_days,
+  );
+  const fetchMasters = useMasterStore((state) => state.fetchSettings);
+
+  useEffect(() => {
+    fetchCustomers();
+    fetchMasters();
+  }, [fetchCustomers, fetchMasters]);
+
+  // Customers due a reorder reminder — surfaced as a badge on the menu item
+  // so it's noticeable without opening the Customers screen.
+  const dueCustomerCount = useMemo(
+    () => customers.filter((c) => isReorderDue(c, reminderDays)).length,
+    [customers, reminderDays],
+  );
+
+  const navItems: {
+    icon: typeof Users;
+    label: string;
+    path: string;
+    badge?: number;
+  }[] = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Package, label: "Products", path: "/products" },
     { icon: Boxes, label: "Inventory", path: "/inventory" },
@@ -32,7 +61,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { icon: Percent, label: "Coupons", path: "/coupons" },
     { icon: Blocks, label: "Combos", path: "/combos" },
     { icon: Bell, label: "Launch Interests", path: "/launch-interests" },
-    { icon: Users, label: "Customers", path: "/customers" },
+    { icon: Users, label: "Customers", path: "/customers", badge: dueCustomerCount },
+    { icon: SlidersHorizontal, label: "Masters", path: "/masters" },
   ];
 
   const handleLogout = async () => {
@@ -129,7 +159,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               borderRadius: "var(--radius-md)",
               color: isActive
                 ? "var(--color-brand-green)"
-                : "rgba(253, 251, 247, 0.65)",
+                : item.badge
+                  ? "var(--color-brand-gold-light)"
+                  : "rgba(253, 251, 247, 0.65)",
               backgroundColor: isActive
                 ? "var(--color-brand-gold-light)"
                 : "transparent",
@@ -140,7 +172,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             })}
           >
             <item.icon size={19} />
-            <span>{item.label}</span>
+            <span style={{ flex: 1 }}>{item.label}</span>
+            {item.badge ? (
+              <span
+                title={`${item.badge} customer${item.badge === 1 ? "" : "s"} due a reorder reminder`}
+                style={{
+                  minWidth: "22px",
+                  padding: "1px 7px",
+                  borderRadius: "var(--radius-full)",
+                  background: "var(--color-brand-gold)",
+                  color: "var(--color-brand-green)",
+                  fontSize: "0.72rem",
+                  fontWeight: 700,
+                  textAlign: "center",
+                  boxShadow: "0 0 0 3px rgba(197, 160, 40, 0.25)",
+                }}
+              >
+                {item.badge}
+              </span>
+            ) : null}
           </NavLink>
         ))}
       </nav>
