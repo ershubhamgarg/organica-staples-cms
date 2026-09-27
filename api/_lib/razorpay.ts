@@ -297,8 +297,18 @@ export async function getRefundById(refundId: string): Promise<SingleRefundLooku
     };
 
     if (!response.ok) {
+      // TEMPORARY diagnostic: surfaces which Razorpay key *mode* (never the
+      // secret) the deployed function actually used, to confirm/rule out a
+      // stale test-mode key in Vercel's env config being why a live-mode
+      // refund ID 406s here despite the identical request succeeding from a
+      // known-good live key elsewhere. Remove once diagnosed.
+      const keyModeHint = keyId.startsWith("rzp_live_")
+        ? "rzp_live_"
+        : keyId.startsWith("rzp_test_")
+          ? "rzp_test_"
+          : `unrecognized prefix (${keyId.slice(0, 8)}…)`;
       throw new Error(
-        razorpayErrorMessage(result, raw, response.status, "Razorpay refund lookup failed"),
+        `${razorpayErrorMessage(result, raw, response.status, "Razorpay refund lookup failed")} [debug: key mode = ${keyModeHint}]`,
       );
     }
 
