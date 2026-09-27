@@ -1,5 +1,41 @@
 const RAZORPAY_API_BASE = "https://api.razorpay.com/v1";
 
+/**
+ * Razorpay (or a proxy/WAF in front of it) doesn't always return the
+ * documented `{error: {description}}` JSON shape — a raw HTTP-level
+ * rejection (e.g. a 406) can come back as plain text or an empty body. The
+ * previous version of these helpers silently discarded that body on parse
+ * failure and fell back to a bare "(status code)" message with zero
+ * diagnostic detail, which is exactly what surfaced when a partial refund
+ * failed with a 406 and nothing else. Read the body as text first — always
+ * capturing something to show, even when it isn't the expected JSON shape.
+ */
+async function readRazorpayResponse(
+  response: Response,
+): Promise<{ result: { error?: { description?: string } }; raw: string }> {
+  const raw = await response.text().catch(() => "");
+  let result: { error?: { description?: string } } = {};
+  if (raw) {
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      // Not JSON — `raw` itself is still surfaced below.
+    }
+  }
+  return { result, raw };
+}
+
+function razorpayErrorMessage(
+  result: { error?: { description?: string } },
+  raw: string,
+  status: number,
+  action: string,
+): string {
+  if (result.error?.description) return result.error.description;
+  if (raw.trim()) return `${action} (${status}): ${raw.slice(0, 300)}`;
+  return `${action} (${status}).`;
+}
+
 export type PaymentDetailsLookup = {
   attempted: boolean;
   success: boolean;
@@ -47,7 +83,8 @@ export async function getPaymentDetails(
       `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}`,
       { headers: { Authorization: authHeader } },
     );
-    const result = (await response.json().catch(() => ({}))) as {
+    const { result: parsed, raw } = await readRazorpayResponse(response);
+    const result = parsed as {
       id?: string;
       status?: string;
       amount?: number;
@@ -60,7 +97,7 @@ export async function getPaymentDetails(
 
     if (!response.ok) {
       throw new Error(
-        result.error?.description ?? `Razorpay payment lookup failed (${response.status}).`,
+        razorpayErrorMessage(result, raw, response.status, "Razorpay payment lookup failed"),
       );
     }
 
@@ -140,14 +177,15 @@ export async function getPaymentRefundState(
       `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}/refunds`,
       { headers: { Authorization: authHeader } },
     );
-    const result = (await response.json().catch(() => ({}))) as {
+    const { result: parsed, raw } = await readRazorpayResponse(response);
+    const result = parsed as {
       items?: Array<{ id: string; amount: number; status: string; created_at: number }>;
       error?: { description?: string };
     };
 
     if (!response.ok) {
       throw new Error(
-        result.error?.description ?? `Razorpay refund lookup failed (${response.status}).`,
+        razorpayErrorMessage(result, raw, response.status, "Razorpay refund lookup failed"),
       );
     }
 
@@ -189,6 +227,94 @@ export async function getPaymentRefundState(
       refundId: null,
       status: null,
       amount: null,
+      refundedAt: null,
+    };
+  }
+}
+
+export type SingleRefundLookup = {
+  attempted: boolean;
+  success: boolean;
+  message: string | null;
+  id: string | null;
+  paymentId: string | null;
+  amount: number | null;
+  status: string | null;
+  refundedAt: string | null;
+};
+
+/**
+ * Looks up one specific refund by ID — used when an admin manually types in
+ * a Razorpay Refund ID (e.g. copied from the Razorpay dashboard after
+ * issuing a refund there directly) rather than waiting for/triggering the
+ * "Refresh" reconciliation. This is a *confirmation* step: the caller
+ * checks the returned `paymentId` actually matches the order's own payment
+ * before trusting it, since nothing stops an admin pasting a refund ID that
+ * belongs to a completely different payment.
+ */
+export async function getRefundById(refundId: string): Promise<SingleRefundLookup> {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    return {
+      attempted: true,
+      success: false,
+      message: "Razorpay credentials are not configured.",
+      id: null,
+      paymentId: null,
+      amount: null,
+      status: null,
+      refundedAt: null,
+    };
+  }
+
+  try {
+    const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
+    const response = await fetch(
+      `${RAZORPAY_API_BASE}/refunds/${encodeURIComponent(refundId)}`,
+      { headers: { Authorization: authHeader } },
+    );
+    const { result: parsed, raw } = await readRazorpayResponse(response);
+    const result = parsed as {
+      id?: string;
+      payment_id?: string;
+      amount?: number;
+      status?: string;
+      created_at?: number;
+      error?: { description?: string };
+    };
+
+    if (!response.ok) {
+      throw new Error(
+        razorpayErrorMessage(result, raw, response.status, "Razorpay refund lookup failed"),
+      );
+    }
+
+    const status = result.status === "processed" ? "processed" : "pending";
+
+    return {
+      attempted: true,
+      success: true,
+      message: null,
+      id: result.id ?? null,
+      paymentId: result.payment_id ?? null,
+      amount: typeof result.amount === "number" ? result.amount / 100 : null,
+      status,
+      refundedAt:
+        status === "processed" && result.created_at
+          ? new Date(result.created_at * 1000).toISOString()
+          : null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      success: false,
+      message: error instanceof Error ? error.message : "Razorpay refund lookup failed.",
+      id: null,
+      paymentId: null,
+      amount: null,
+      status: null,
       refundedAt: null,
     };
   }
@@ -248,7 +374,8 @@ export async function refundRazorpayPayment(
         body: JSON.stringify(body),
       },
     );
-    const result = (await response.json().catch(() => ({}))) as {
+    const { result: parsed, raw } = await readRazorpayResponse(response);
+    const result = parsed as {
       id?: string;
       amount?: number;
       status?: string;
@@ -257,7 +384,7 @@ export async function refundRazorpayPayment(
 
     if (!response.ok) {
       throw new Error(
-        result.error?.description ?? `Razorpay refund failed (${response.status}).`,
+        razorpayErrorMessage(result, raw, response.status, "Razorpay refund failed"),
       );
     }
 

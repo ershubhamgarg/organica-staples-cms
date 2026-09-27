@@ -228,6 +228,7 @@ interface OrderState {
     input: { reason: string; mode: "full" | "partial"; amount?: number },
   ) => Promise<RefundOrderResult>;
   checkRefundStatus: (id: string) => Promise<RefundStatusResult>;
+  applyRefundId: (id: string, refundId: string) => Promise<RefundStatusResult>;
   syncPaymentDetails: (
     id: string,
     input: { paymentId: string },
@@ -466,6 +467,29 @@ export const useOrderStore = create<OrderState>()((set) => ({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to check refund status.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  applyRefundId: async (id, refundId) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await postToOrdersApi<RefundStatusResult>(
+        "/api/orders/apply-refund-id",
+        { orderId: id, refundId },
+      );
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? result.order : o)),
+        isLoading: false,
+      }));
+
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to apply this refund.";
       set({ error: message, isLoading: false });
       throw err;
     }

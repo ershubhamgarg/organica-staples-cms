@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Ban,
   RefreshCcw,
+  Hash,
   Weight,
   Download,
   IndianRupee,
@@ -24,7 +25,12 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
-import { useOrderStore, type Order, type RefundMode } from "../store/orderStore";
+import {
+  useOrderStore,
+  type Order,
+  type RefundMode,
+  type RefundStatusResult,
+} from "../store/orderStore";
 import { supabase } from "../utils/supabase";
 import Spinner from "../components/ui/Spinner";
 import Modal from "../components/ui/Modal";
@@ -93,6 +99,7 @@ export default function OrderDetails() {
   );
   const refundOrder = useOrderStore((state) => state.refundOrder);
   const checkRefundStatus = useOrderStore((state) => state.checkRefundStatus);
+  const applyRefundId = useOrderStore((state) => state.applyRefundId);
   const addOrderRemark = useOrderStore((state) => state.addOrderRemark);
   const confirmCodPayment = useOrderStore((state) => state.confirmCodPayment);
   const syncShippingDetails = useOrderStore(
@@ -126,6 +133,10 @@ export default function OrderDetails() {
   const [standaloneRefundAmount, setStandaloneRefundAmount] = useState(0);
   const [standaloneRefundReason, setStandaloneRefundReason] = useState("");
   const [isRefunding, setIsRefunding] = useState(false);
+  const [isRefreshingRefund, setIsRefreshingRefund] = useState(false);
+  const [showApplyRefundIdModal, setShowApplyRefundIdModal] = useState(false);
+  const [manualRefundId, setManualRefundId] = useState("");
+  const [isApplyingRefundId, setIsApplyingRefundId] = useState(false);
   const [showRemarks, setShowRemarks] = useState(false);
   const [newRemarkText, setNewRemarkText] = useState("");
   const [isAddingRemark, setIsAddingRemark] = useState(false);
@@ -136,6 +147,26 @@ export default function OrderDetails() {
   const [codAmount, setCodAmount] = useState(0);
   const [codMode, setCodMode] = useState<CodPaymentMode>("cash");
   const [isSavingCod, setIsSavingCod] = useState(false);
+
+  // Shared by the automatic on-load check below, the manual "Refresh"
+  // button, and "Apply Refund ID" — merges only the refund-related fields
+  // (not a full setOrder(result.order)) so this never races with the
+  // shipping-tracking refresh in the same mount effect and momentarily
+  // reverts whichever one lands second.
+  const mergeRefundFields = (result: RefundStatusResult) => {
+    setOrder((prev) =>
+      prev
+        ? {
+            ...prev,
+            razorpay_refund_id: result.order.razorpay_refund_id,
+            refund_status: result.order.refund_status,
+            refund_amount: result.order.refund_amount,
+            refunded_at: result.order.refunded_at,
+            refund_checked_at: result.order.refund_checked_at,
+          }
+        : prev,
+    );
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -190,18 +221,7 @@ export default function OrderDetails() {
         checkRefundStatus(id)
           .then((result) => {
             if (cancelled || !result.refund.changed) return;
-            setOrder((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    razorpay_refund_id: result.order.razorpay_refund_id,
-                    refund_status: result.order.refund_status,
-                    refund_amount: result.order.refund_amount,
-                    refunded_at: result.order.refunded_at,
-                    refund_checked_at: result.order.refund_checked_at,
-                  }
-                : prev,
-            );
+            mergeRefundFields(result);
             toast.info(
               `Refund status updated from Razorpay — ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status ?? "recorded"}.`,
             );
@@ -595,6 +615,67 @@ export default function OrderDetails() {
       toast.error(err instanceof Error ? err.message : "Failed to refund order.");
     } finally {
       setIsRefunding(false);
+    }
+  };
+
+  const handleRefreshRefundStatus = async () => {
+    if (!id) return;
+
+    try {
+      setIsRefreshingRefund(true);
+      const result = await checkRefundStatus(id);
+      if (result.refund.changed) {
+        mergeRefundFields(result);
+        toast.success(
+          `Refund status updated from Razorpay — ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status ?? "recorded"}.`,
+        );
+      } else if (result.refund.message) {
+        // e.g. Razorpay unreachable, or a lower-than-recorded amount that
+        // got deliberately ignored as a likely credential/mode mismatch.
+        toast.error(result.refund.message);
+      } else {
+        toast.info("No new refund found on Razorpay for this order.");
+      }
+    } catch (err) {
+      console.error("Failed to refresh refund status:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to refresh refund status.",
+      );
+    } finally {
+      setIsRefreshingRefund(false);
+    }
+  };
+
+  const handleOpenApplyRefundIdModal = () => {
+    setManualRefundId("");
+    setShowApplyRefundIdModal(true);
+  };
+
+  const handleConfirmApplyRefundId = async () => {
+    if (!id || !manualRefundId.trim()) return;
+
+    try {
+      setIsApplyingRefundId(true);
+      const result = await applyRefundId(id, manualRefundId.trim());
+      mergeRefundFields(result);
+      setShowApplyRefundIdModal(false);
+      setManualRefundId("");
+      if (result.refund.changed) {
+        toast.success(
+          `Refund applied — ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status ?? "recorded"}.`,
+        );
+      } else {
+        toast.info(
+          "This refund ID matches what's already on record for this order — nothing to update.",
+        );
+      }
+    } catch (err) {
+      console.error("Failed to apply refund ID:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to apply this refund ID.",
+      );
+    } finally {
+      setIsApplyingRefundId(false);
     }
   };
 
@@ -1780,7 +1861,12 @@ export default function OrderDetails() {
                   >
                     <span className="eyebrow">Refund</span>
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                      }}
                     >
                       {order.refund_status && (
                         <span
@@ -1788,6 +1874,29 @@ export default function OrderDetails() {
                         >
                           {order.refund_status.replace(/_/g, " ")}
                         </span>
+                      )}
+                      {canRefundOrder(order) && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<RefreshCcw size={14} />}
+                            loading={isRefreshingRefund}
+                            onClick={handleRefreshRefundStatus}
+                            data-tooltip="Re-check Razorpay for a refund issued directly on their dashboard"
+                          >
+                            Refresh
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<Hash size={14} />}
+                            onClick={handleOpenApplyRefundIdModal}
+                            data-tooltip="Paste a Razorpay Refund ID to apply it directly"
+                          >
+                            Enter Refund ID
+                          </Button>
+                        </>
                       )}
                       {canIssueStandaloneRefund && (
                         <Button
@@ -2329,6 +2438,65 @@ export default function OrderDetails() {
               onClick={handleConfirmRefund}
             >
               Confirm Refund
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Apply Refund ID Modal */}
+      {showApplyRefundIdModal && order && (
+        <Modal
+          onClose={() => setShowApplyRefundIdModal(false)}
+          title="Enter Refund ID"
+          icon={<Hash size={20} />}
+          maxWidth="440px"
+          closeDisabled={isApplyingRefundId}
+        >
+          <p
+            style={{
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "0.9rem",
+            }}
+          >
+            Use this when a refund was issued directly on the Razorpay
+            dashboard. Paste the Refund ID from there (starts with{" "}
+            <code>rfnd_</code>) — it's verified against this order's payment
+            before anything is applied.
+          </p>
+
+          <div className="form-group">
+            <label>Razorpay Refund ID</label>
+            <input
+              type="text"
+              autoFocus
+              value={manualRefundId}
+              onChange={(e) => setManualRefundId(e.target.value)}
+              placeholder="rfnd_XXXXXXXXXXXXXX"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              justifyContent: "flex-end",
+              marginTop: "1.5rem",
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => setShowApplyRefundIdModal(false)}
+              disabled={isApplyingRefundId}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!manualRefundId.trim()}
+              loading={isApplyingRefundId}
+              onClick={handleConfirmApplyRefundId}
+            >
+              Apply Refund
             </Button>
           </div>
         </Modal>

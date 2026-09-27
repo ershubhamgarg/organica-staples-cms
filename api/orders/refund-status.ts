@@ -1,15 +1,10 @@
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin";
-import { getPaymentRefundState } from "../_lib/razorpay";
+import { reconcileOrderRefund } from "../_lib/refundReconciliation";
 
 export const config = { runtime: "edge" };
 
 type RefundStatusRequestBody = {
   orderId?: string;
-};
-
-type PaymentDetails = {
-  provider?: string;
-  provider_payment_id?: string;
 };
 
 function json(body: unknown, status = 200) {
@@ -19,15 +14,13 @@ function json(body: unknown, status = 200) {
   });
 }
 
-const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 /**
  * Reconciles an order's refund fields against Razorpay's own record —
  * catches a refund issued directly on the Razorpay dashboard (or any other
  * out-of-band way), which this app would otherwise never learn about since
  * it only ever updates refund_status/refund_amount when *it* issues a
  * refund (via cancel.ts or refund.ts). Called automatically whenever
- * OrderDetails.tsx loads.
+ * OrderDetails.tsx loads, and again on demand from its "Refresh" button.
  */
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== "POST") {
@@ -72,12 +65,11 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   // Selects the full row (not just the refund-related columns this endpoint
-  // cares about) because three of the four response branches below return
-  // this same `order` object as-is — the client's store action replaces the
-  // order's entire entry in its global list with whatever `order` comes
-  // back, so a partial row here would silently truncate that order
-  // everywhere else it's displayed (e.g. Orders.tsx crashing on a missing
-  // `items` array the moment it's rendered from the corrupted store state).
+  // cares about) because the response returns this same `order` object as
+  // one of its branches (when reconcileOrderRefund finds nothing to
+  // change) — the client's store action replaces the order's entire entry
+  // in its global list with whatever `order` comes back, so a partial row
+  // here would silently truncate that order everywhere else it's displayed.
   const { data: order, error: fetchError } = await supabaseAdmin
     .from("orders")
     .select("*")
@@ -88,76 +80,13 @@ export default async function handler(request: Request): Promise<Response> {
     return json({ error: fetchError?.message ?? "Order was not found." }, 400);
   }
 
-  const paymentDetails = order.payment_details as PaymentDetails | null;
-  if (order.payment_method !== "razorpay" || !paymentDetails?.provider_payment_id) {
-    return json({ order, refund: { attempted: false, changed: false } });
+  try {
+    const result = await reconcileOrderRefund(supabaseAdmin, order);
+    return json(result);
+  } catch (err) {
+    return json(
+      { error: err instanceof Error ? err.message : "Failed to check refund status." },
+      500,
+    );
   }
-
-  const refundState = await getPaymentRefundState(paymentDetails.provider_payment_id);
-
-  if (!refundState.success) {
-    // Non-fatal — this is a silent background check, not a user-initiated
-    // action, so a Razorpay hiccup shouldn't surface as an error on the page.
-    return json({ order, refund: { attempted: true, changed: false, message: refundState.message } });
-  }
-
-  const previousAmount = order.refund_amount ?? 0;
-  const nextAmount = refundState.hasAnyRefund ? round2(refundState.amount ?? 0) : 0;
-
-  // Razorpay has no "un-refund" operation, so it reporting *less* refunded
-  // than what's already on record is far more likely to mean this check ran
-  // against the wrong Razorpay account/mode (e.g. a stale test-mode key
-  // somewhere while the real payment is live-mode) than a genuine reversal —
-  // refuse to regress the stored amount. This previously let a single
-  // wrong-credentialed check silently wipe out a correctly-recorded refund.
-  if (nextAmount < previousAmount) {
-    return json({
-      order,
-      refund: {
-        attempted: true,
-        changed: false,
-        message:
-          "Razorpay reported a lower refunded amount than already on record — ignored as a likely credential/mode mismatch rather than applied.",
-      },
-    });
-  }
-
-  const changed =
-    nextAmount !== previousAmount ||
-    (refundState.status ?? null) !== (order.refund_status ?? null) ||
-    (refundState.refundId ?? null) !== (order.razorpay_refund_id ?? null);
-
-  if (!changed) {
-    return json({ order, refund: { attempted: true, changed: false } });
-  }
-
-  const updates = {
-    razorpay_refund_id: refundState.refundId,
-    refund_status: refundState.status,
-    refund_amount: refundState.hasAnyRefund ? nextAmount : null,
-    refunded_at: refundState.refundedAt,
-    refund_checked_at: new Date().toISOString(),
-  };
-
-  const { data: updatedOrder, error: updateError } = await supabaseAdmin
-    .from("orders")
-    .update(updates)
-    .eq("id", orderId)
-    .select()
-    .single();
-
-  if (updateError) {
-    return json({ error: updateError.message }, 500);
-  }
-
-  return json({
-    order: updatedOrder,
-    refund: {
-      attempted: true,
-      changed: true,
-      previousAmount,
-      amount: nextAmount,
-      status: refundState.status,
-    },
-  });
 }
