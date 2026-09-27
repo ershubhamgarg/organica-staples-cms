@@ -114,6 +114,13 @@ export interface Order {
   refund_amount?: number | null;
   refunded_at?: string | null;
   refund_checked_at?: string | null;
+  /** Set when a refund is recorded via the "Record Manual Refund" form
+   * (rather than issued by this app or confirmed against Razorpay's API) —
+   * e.g. a refund an admin issued directly on the Razorpay dashboard while
+   * the automatic reconciliation was down. Drives the "manually recorded"
+   * note shown next to the refund fields. */
+  refund_manual_comment?: string | null;
+  refund_manually_recorded_at?: string | null;
   /** Free-form, timestamped admin notes — e.g. "AWB sync failed, called
    * Shiprocket support at 3pm" — append-only, newest last. */
   remarks?: OrderRemark[] | null;
@@ -229,6 +236,10 @@ interface OrderState {
   ) => Promise<RefundOrderResult>;
   checkRefundStatus: (id: string) => Promise<RefundStatusResult>;
   applyRefundId: (id: string, refundId: string) => Promise<RefundStatusResult>;
+  recordManualRefund: (
+    id: string,
+    input: { refundId: string; amount: number; comment?: string },
+  ) => Promise<Order>;
   syncPaymentDetails: (
     id: string,
     input: { paymentId: string },
@@ -490,6 +501,50 @@ export const useOrderStore = create<OrderState>()((set) => ({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to apply this refund.";
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  // Writes directly via Supabase (same pattern as addOrderRemark above),
+  // deliberately bypassing api/orders/apply-refund-id.ts and any Razorpay
+  // API call — the automatic reconciliation path is unreliable right now
+  // (an unresolved 406 from Razorpay's side), so this records what the admin
+  // has already confirmed themselves (e.g. on the Razorpay dashboard
+  // directly) rather than trying to re-verify it here.
+  recordManualRefund: async (id, input) => {
+    set({ isLoading: true, error: null });
+
+    const now = new Date().toISOString();
+
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .update({
+          razorpay_refund_id: input.refundId,
+          refund_status: "processed",
+          refund_amount: input.amount,
+          refunded_at: now,
+          refund_manual_comment: input.comment?.trim() || null,
+          refund_manually_recorded_at: now,
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      set((state) => ({
+        orders: state.orders.map((o) => (o.id === id ? data : o)),
+        isLoading: false,
+      }));
+
+      return data as Order;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to record this refund.";
       set({ error: message, isLoading: false });
       throw err;
     }

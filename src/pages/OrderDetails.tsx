@@ -99,7 +99,7 @@ export default function OrderDetails() {
   );
   const refundOrder = useOrderStore((state) => state.refundOrder);
   const checkRefundStatus = useOrderStore((state) => state.checkRefundStatus);
-  const applyRefundId = useOrderStore((state) => state.applyRefundId);
+  const recordManualRefund = useOrderStore((state) => state.recordManualRefund);
   const addOrderRemark = useOrderStore((state) => state.addOrderRemark);
   const confirmCodPayment = useOrderStore((state) => state.confirmCodPayment);
   const syncShippingDetails = useOrderStore(
@@ -134,9 +134,11 @@ export default function OrderDetails() {
   const [standaloneRefundReason, setStandaloneRefundReason] = useState("");
   const [isRefunding, setIsRefunding] = useState(false);
   const [isRefreshingRefund, setIsRefreshingRefund] = useState(false);
-  const [showApplyRefundIdModal, setShowApplyRefundIdModal] = useState(false);
+  const [showManualRefundModal, setShowManualRefundModal] = useState(false);
   const [manualRefundId, setManualRefundId] = useState("");
-  const [isApplyingRefundId, setIsApplyingRefundId] = useState(false);
+  const [manualRefundAmount, setManualRefundAmount] = useState(0);
+  const [manualRefundComment, setManualRefundComment] = useState("");
+  const [isSavingManualRefund, setIsSavingManualRefund] = useState(false);
   const [showRemarks, setShowRemarks] = useState(false);
   const [newRemarkText, setNewRemarkText] = useState("");
   const [isAddingRemark, setIsAddingRemark] = useState(false);
@@ -646,36 +648,35 @@ export default function OrderDetails() {
     }
   };
 
-  const handleOpenApplyRefundIdModal = () => {
-    setManualRefundId("");
-    setShowApplyRefundIdModal(true);
+  const handleOpenManualRefundModal = () => {
+    setManualRefundId(order?.razorpay_refund_id ?? "");
+    setManualRefundAmount(order?.refund_amount ?? order?.total_amount ?? 0);
+    setManualRefundComment("");
+    setShowManualRefundModal(true);
   };
 
-  const handleConfirmApplyRefundId = async () => {
-    if (!id || !manualRefundId.trim()) return;
+  const handleConfirmManualRefund = async () => {
+    if (!id || !manualRefundId.trim() || manualRefundAmount <= 0) return;
 
     try {
-      setIsApplyingRefundId(true);
-      const result = await applyRefundId(id, manualRefundId.trim());
-      mergeRefundFields(result);
-      setShowApplyRefundIdModal(false);
-      setManualRefundId("");
-      if (result.refund.changed) {
-        toast.success(
-          `Refund applied — ₹${formatCurrency(result.refund.amount ?? 0)} ${result.refund.status ?? "recorded"}.`,
-        );
-      } else {
-        toast.info(
-          "This refund ID matches what's already on record for this order — nothing to update.",
-        );
-      }
+      setIsSavingManualRefund(true);
+      const updatedOrder = await recordManualRefund(id, {
+        refundId: manualRefundId.trim(),
+        amount: manualRefundAmount,
+        comment: manualRefundComment,
+      });
+      setOrder(updatedOrder);
+      setShowManualRefundModal(false);
+      toast.success(
+        `Refund recorded manually — ₹${formatCurrency(manualRefundAmount)}.`,
+      );
     } catch (err) {
-      console.error("Failed to apply refund ID:", err);
+      console.error("Failed to record manual refund:", err);
       toast.error(
-        err instanceof Error ? err.message : "Failed to apply this refund ID.",
+        err instanceof Error ? err.message : "Failed to record this refund.",
       );
     } finally {
-      setIsApplyingRefundId(false);
+      setIsSavingManualRefund(false);
     }
   };
 
@@ -1891,10 +1892,10 @@ export default function OrderDetails() {
                             variant="ghost"
                             size="sm"
                             icon={<Hash size={14} />}
-                            onClick={handleOpenApplyRefundIdModal}
-                            data-tooltip="Paste a Razorpay Refund ID to apply it directly"
+                            onClick={handleOpenManualRefundModal}
+                            data-tooltip="Record a refund that was issued directly on the Razorpay dashboard"
                           >
-                            Enter Refund ID
+                            Record Manual Refund
                           </Button>
                         </>
                       )}
@@ -1930,6 +1931,22 @@ export default function OrderDetails() {
                       label="Refunded At"
                       value={formatDateTime(order.refunded_at)}
                     />
+                  )}
+                  {order.refund_manually_recorded_at && (
+                    <div
+                      style={{
+                        fontSize: "0.8rem",
+                        color: "var(--text-secondary)",
+                        marginTop: "4px",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Manually recorded on{" "}
+                      {formatDateTime(order.refund_manually_recorded_at)}
+                      {order.refund_manual_comment
+                        ? ` — "${order.refund_manual_comment}"`
+                        : ""}
+                    </div>
                   )}
                   {order.refund_status && !canIssueStandaloneRefund && (
                     <div
@@ -2443,14 +2460,14 @@ export default function OrderDetails() {
         </Modal>
       )}
 
-      {/* Apply Refund ID Modal */}
-      {showApplyRefundIdModal && order && (
+      {/* Record Manual Refund Modal */}
+      {showManualRefundModal && order && (
         <Modal
-          onClose={() => setShowApplyRefundIdModal(false)}
-          title="Enter Refund ID"
+          onClose={() => setShowManualRefundModal(false)}
+          title="Record Manual Refund"
           icon={<Hash size={20} />}
           maxWidth="440px"
-          closeDisabled={isApplyingRefundId}
+          closeDisabled={isSavingManualRefund}
         >
           <p
             style={{
@@ -2460,9 +2477,9 @@ export default function OrderDetails() {
             }}
           >
             Use this when a refund was issued directly on the Razorpay
-            dashboard. Paste the Refund ID from there (starts with{" "}
-            <code>rfnd_</code>) — it's verified against this order's payment
-            before anything is applied.
+            dashboard. This records what you enter here as-is — it isn't
+            re-verified against Razorpay — and marks it on the order as a
+            manual entry with today's timestamp.
           </p>
 
           <div className="form-group">
@@ -2476,6 +2493,30 @@ export default function OrderDetails() {
             />
           </div>
 
+          <div className="form-group">
+            <label>Total Amount Refunded (₹)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={manualRefundAmount || ""}
+              onChange={(e) =>
+                setManualRefundAmount(parseFloat(e.target.value) || 0)
+              }
+              placeholder="0.00"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Comment (optional)</label>
+            <textarea
+              rows={3}
+              value={manualRefundComment}
+              onChange={(e) => setManualRefundComment(e.target.value)}
+              placeholder="e.g. Refunded directly on Razorpay dashboard on 26 Sep after a customer complaint."
+            />
+          </div>
+
           <div
             style={{
               display: "flex",
@@ -2486,17 +2527,17 @@ export default function OrderDetails() {
           >
             <Button
               variant="secondary"
-              onClick={() => setShowApplyRefundIdModal(false)}
-              disabled={isApplyingRefundId}
+              onClick={() => setShowManualRefundModal(false)}
+              disabled={isSavingManualRefund}
             >
               Cancel
             </Button>
             <Button
-              disabled={!manualRefundId.trim()}
-              loading={isApplyingRefundId}
-              onClick={handleConfirmApplyRefundId}
+              disabled={!manualRefundId.trim() || manualRefundAmount <= 0}
+              loading={isSavingManualRefund}
+              onClick={handleConfirmManualRefund}
             >
-              Apply Refund
+              Save Refund
             </Button>
           </div>
         </Modal>
