@@ -2,7 +2,12 @@ import { getSupabaseAdmin } from "../_lib/supabaseAdmin";
 import { getRefundById } from "../_lib/razorpay";
 import { reconcileOrderRefund } from "../_lib/refundReconciliation";
 
-export const config = { runtime: "edge" };
+// Node.js runtime (not edge) — Razorpay's API has been observed to reject
+// requests from Vercel's Edge Runtime network with a bare, bodyless 406 that
+// an identical request (same key, same headers) succeeds with from a normal
+// network. This function calls Razorpay directly (getRefundById), so it
+// needs the Node.js runtime's outbound network path instead.
+export const config = { runtime: "nodejs" };
 
 type ApplyRefundIdRequestBody = {
   orderId?: string;
