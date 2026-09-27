@@ -1,5 +1,16 @@
 const RAZORPAY_API_BASE = "https://api.razorpay.com/v1";
 
+// The Edge runtime's fetch doesn't send a User-Agent (and Razorpay's front
+// door has been observed to reject some edge-originated requests with a bare,
+// bodyless 406 that a normal browser/curl request with the exact same
+// credentials and URL does not reproduce) — set headers that look like an
+// ordinary API client rather than an unidentified script, as cheap,
+// low-risk hardening against that class of rejection.
+const RAZORPAY_REQUEST_HEADERS = {
+  "User-Agent": "annvriksh-cms/1.0 (+https://annvriksh.com)",
+  Accept: "application/json",
+} as const;
+
 /**
  * Razorpay (or a proxy/WAF in front of it) doesn't always return the
  * documented `{error: {description}}` JSON shape — a raw HTTP-level
@@ -81,7 +92,7 @@ export async function getPaymentDetails(
     const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
     const response = await fetch(
       `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}`,
-      { headers: { Authorization: authHeader } },
+      { headers: { ...RAZORPAY_REQUEST_HEADERS, Authorization: authHeader } },
     );
     const { result: parsed, raw } = await readRazorpayResponse(response);
     const result = parsed as {
@@ -175,7 +186,7 @@ export async function getPaymentRefundState(
     const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
     const response = await fetch(
       `${RAZORPAY_API_BASE}/payments/${encodeURIComponent(paymentId)}/refunds`,
-      { headers: { Authorization: authHeader } },
+      { headers: { ...RAZORPAY_REQUEST_HEADERS, Authorization: authHeader } },
     );
     const { result: parsed, raw } = await readRazorpayResponse(response);
     const result = parsed as {
@@ -273,7 +284,7 @@ export async function getRefundById(refundId: string): Promise<SingleRefundLooku
     const authHeader = `Basic ${btoa(`${keyId}:${keySecret}`)}`;
     const response = await fetch(
       `${RAZORPAY_API_BASE}/refunds/${encodeURIComponent(refundId)}`,
-      { headers: { Authorization: authHeader } },
+      { headers: { ...RAZORPAY_REQUEST_HEADERS, Authorization: authHeader } },
     );
     const { result: parsed, raw } = await readRazorpayResponse(response);
     const result = parsed as {
@@ -368,6 +379,7 @@ export async function refundRazorpayPayment(
       {
         method: "POST",
         headers: {
+          ...RAZORPAY_REQUEST_HEADERS,
           "Content-Type": "application/json",
           Authorization: authHeader,
         },
