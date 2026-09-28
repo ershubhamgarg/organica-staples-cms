@@ -841,6 +841,69 @@ tbody tr {
     font-size: 0.85rem;
   }
 
+  /* A horizontally-scrolling data table is the single biggest "this is a
+     shrunk desktop website" tell on a phone — every list page (Orders,
+     Products, Inventory, Coupons, Customers, Dashboard's recent-orders)
+     opts into this instead via `.responsive-table` + a `data-label`
+     attribute on each <td> (matching its column header). Below this
+     breakpoint each row becomes its own card, and each cell becomes a
+     "Label: value" line inside it — the standard CSS-only technique for
+     turning a table into a card list without a second, parallel render
+     path per page. */
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table,
+  .responsive-table tbody,
+  .responsive-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-table tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--card-bg);
+  }
+
+  .responsive-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .responsive-table td {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .responsive-table td:last-child {
+    border-bottom: none;
+  }
+
+  /* A cell with no data-label (e.g. a product thumbnail, or a row of
+     action buttons) isn't part of the label/value pattern — centered
+     instead of split into a left label / right value line. */
+  .responsive-table td:not([data-label]) {
+    justify-content: center;
+  }
+
+  .responsive-table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+  }
+
   .btn {
     padding: 8px 14px;
     font-size: 0.9rem;

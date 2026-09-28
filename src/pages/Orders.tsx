@@ -174,7 +174,7 @@ export default function Orders() {
           {isLoading && orders.length === 0 ? (
             <Spinner />
           ) : (
-            <table style={{ width: "100%", textAlign: "left" }}>
+            <table className="responsive-table" style={{ width: "100%", textAlign: "left" }}>
               <thead>
                 <tr
                   style={{
@@ -218,6 +218,7 @@ export default function Orders() {
                       }}
                     >
                       <td
+                        data-label="Order ID"
                         style={{
                           padding: "16px",
                           fontWeight: 600,
@@ -242,7 +243,7 @@ export default function Orders() {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: "16px" }}>
+                      <td data-label="Customer" style={{ padding: "16px" }}>
                         <div>
                           <div style={{ fontWeight: 500 }}>
                             {order.delivery_address?.name || "Guest"}
@@ -267,6 +268,7 @@ export default function Orders() {
                         </div>
                       </td>
                       <td
+                        data-label="Date"
                         style={{
                           padding: "16px",
                           color: "var(--text-secondary)",
@@ -274,7 +276,7 @@ export default function Orders() {
                       >
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
-                      <td style={{ padding: "16px", fontWeight: 600 }}>
+                      <td data-label="Total" style={{ padding: "16px", fontWeight: 600 }}>
                         <span
                           style={{
                             display: "inline-flex",
@@ -310,7 +312,7 @@ export default function Orders() {
                           )}
                         </span>
                       </td>
-                      <td style={{ padding: "16px" }}>
+                      <td data-label="Weight" style={{ padding: "16px" }}>
                         <span
                           className="badge badge-secondary"
                           style={{ gap: "5px" }}
@@ -319,7 +321,7 @@ export default function Orders() {
                           {formatWeight(getOrderGrossWeightKg(order.items))}
                         </span>
                       </td>
-                      <td style={{ padding: "16px" }}>
+                      <td data-label="Status" style={{ padding: "16px" }}>
                         {(() => {
                           const unified = getUnifiedOrderStatus(order);
                           return (
@@ -336,7 +338,7 @@ export default function Orders() {
                           );
                         })()}
                       </td>
-                      <td style={{ padding: "16px" }}>
+                      <td data-label="Profit/Loss" style={{ padding: "16px" }}>
                         {!order.shiprocket_awb_code &&
                         order.status !== "cancelled" &&
                         !isLocalOrder(order) ? (

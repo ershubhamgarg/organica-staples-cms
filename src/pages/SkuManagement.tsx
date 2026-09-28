@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save, Printer, Download, AlertTriangle, Search, X } from "lucide-react";
+import { Save, Printer, Download, AlertTriangle, Search, X, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { useSkuStore, type SkuReviewRow } from "../store/skuStore";
 import { useProductStore } from "../store/productStore";
@@ -8,6 +8,7 @@ import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
 import Modal from "../components/ui/Modal";
 import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
+import { generateSkuLabelSheetPdf } from "../utils/skuLabelSheet";
 import { formatCurrency } from "../utils/currency";
 import brandMark from "../assets/annvriksh-mark.png";
 
@@ -132,6 +133,7 @@ export default function SkuManagement() {
   const [printRows, setPrintRows] = useState<CatalogSkuRow[] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [previewRow, setPreviewRow] = useState<CatalogSkuRow | null>(null);
+  const [isGeneratingSheet, setIsGeneratingSheet] = useState(false);
 
   useEffect(() => {
     fetchReview();
@@ -208,6 +210,30 @@ export default function SkuManagement() {
     a.click();
   };
 
+  // Falls back to every assigned SKU when nothing is checked — a sheet
+  // maker is more often "give me everything to print" than "print my
+  // current selection," and an empty sheet would otherwise be a confusing
+  // silent no-op the first time someone tries this without having
+  // selected anything yet.
+  const handleDownloadA4Sheet = async () => {
+    const source = selected.size > 0 ? catalogRows.filter((r) => selected.has(r.sku)) : catalogRows;
+    if (source.length === 0) {
+      toast.error("No SKUs to include on a sheet yet.");
+      return;
+    }
+    setIsGeneratingSheet(true);
+    try {
+      const doc = await generateSkuLabelSheetPdf(
+        source.map((row) => ({ ...row, name: row.productName })),
+      );
+      doc.save("annvriksh-sku-labels-a4.pdf");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate the label sheet.");
+    } finally {
+      setIsGeneratingSheet(false);
+    }
+  };
+
   if (isLoading && catalogRows.length === 0) return <Spinner />;
 
   return (
@@ -250,15 +276,27 @@ export default function SkuManagement() {
             All SKUs ({filteredCatalogRows.length}
             {filteredCatalogRows.length !== catalogRows.length ? ` of ${catalogRows.length}` : ""})
           </strong>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Printer size={14} />}
-            disabled={selected.size === 0}
-            onClick={handlePrintSelected}
-          >
-            Print Selected Labels ({selected.size})
-          </Button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Printer size={14} />}
+              disabled={selected.size === 0}
+              onClick={handlePrintSelected}
+            >
+              Print Selected Labels ({selected.size})
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<FileDown size={14} />}
+              loading={isGeneratingSheet}
+              onClick={handleDownloadA4Sheet}
+              data-tooltip="30 labels per A4 sheet (3 columns x 10 rows), ready to print onto sticker sheets"
+            >
+              Download A4 Sheet (3×10){selected.size > 0 ? ` — Selected (${selected.size})` : " — All"}
+            </Button>
+          </div>
         </div>
 
         <div style={{ position: "relative", marginBottom: "1rem" }}>

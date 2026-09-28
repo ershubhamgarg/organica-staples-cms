@@ -152,7 +152,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", textAlign: "left" }}>
+          <table className="responsive-table" style={{ width: "100%", textAlign: "left" }}>
             <thead>
               <tr
                 style={{
@@ -181,14 +181,14 @@ export default function Dashboard() {
                     key={idx}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
-                    <td style={{ padding: "16px", fontWeight: 600 }}>
+                    <td data-label="Order ID" style={{ padding: "16px", fontWeight: 600 }}>
                       {order.id}
                     </td>
-                    <td style={{ padding: "16px" }}>{order.customer}</td>
-                    <td style={{ padding: "16px", fontWeight: 500 }}>
+                    <td data-label="Customer" style={{ padding: "16px" }}>{order.customer}</td>
+                    <td data-label="Total" style={{ padding: "16px", fontWeight: 500 }}>
                       {order.total}
                     </td>
-                    <td style={{ padding: "16px" }}>
+                    <td data-label="Status" style={{ padding: "16px" }}>
                       <span
                         className={`badge badge-${
                           order.status.toLowerCase() === "delivered" ||
@@ -207,6 +207,7 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td
+                      data-label="Date"
                       style={{
                         padding: "16px",
                         color: "var(--text-secondary)",
