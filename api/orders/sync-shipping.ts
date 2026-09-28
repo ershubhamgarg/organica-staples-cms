@@ -18,6 +18,12 @@ type TrackingResult = {
   courierName: string | null;
   status: string | null;
   trackingUrl: string | null;
+  /** Shiprocket's own order id, read straight off the AWB tracking
+   * response — lets the freight-cost correction below run even when the
+   * admin (or the automatic on-page-load refresh) only ever supplied an
+   * AWB code, with no Shiprocket Order ID separately on hand or already
+   * saved on the order. */
+  shiprocketOrderId: string | null;
 };
 
 type CostCorrectionResult = {
@@ -114,6 +120,11 @@ async function trackByAwb(awbCode: string, token: string): Promise<TrackingResul
         shipment_track?: Array<{
           courier_name?: string;
           current_status?: string;
+          // Shiprocket's own internal order id — present on every real
+          // tracking response (confirmed against this same endpoint's
+          // shape used for courier_name/current_status above), just not
+          // previously read here.
+          order_id?: number | string;
         }>;
         track_url?: string;
       };
@@ -138,6 +149,7 @@ async function trackByAwb(awbCode: string, token: string): Promise<TrackingResul
           courierName: null,
           status: "cancelled",
           trackingUrl: trackingData.track_url ?? getTrackingUrl(awbCode),
+          shiprocketOrderId: null,
         };
       }
       throw new Error(trackingData.error);
@@ -152,6 +164,7 @@ async function trackByAwb(awbCode: string, token: string): Promise<TrackingResul
       courierName: shipment?.courier_name ?? null,
       status: normalizeTrackingStatus(shipment?.current_status),
       trackingUrl: trackingData?.track_url ?? getTrackingUrl(awbCode),
+      shiprocketOrderId: shipment?.order_id != null ? String(shipment.order_id) : null,
     };
   } catch (error) {
     return {
@@ -160,6 +173,7 @@ async function trackByAwb(awbCode: string, token: string): Promise<TrackingResul
       message: error instanceof Error ? error.message : "Shiprocket tracking lookup failed.",
       courierName: null,
       status: null,
+      shiprocketOrderId: null,
       trackingUrl: null,
     };
   }
@@ -320,6 +334,7 @@ export default async function handler(request: Request): Promise<Response> {
             courierName: null,
             status: null,
             trackingUrl: null,
+            shiprocketOrderId: null,
           }
         : {
             attempted: false,
@@ -328,7 +343,15 @@ export default async function handler(request: Request): Promise<Response> {
             courierName: null,
             status: null,
             trackingUrl: null,
+            shiprocketOrderId: null,
           };
+
+  // Falls back to whatever order id the AWB tracking lookup itself just
+  // reported, on top of the explicit/on-file id already resolved above —
+  // this is what lets cost correction run even when an admin (or the
+  // automatic on-page-load refresh) only ever supplied an AWB code, with no
+  // Shiprocket Order ID separately on hand or previously saved.
+  const costCorrectionShiprocketOrderId = effectiveShiprocketOrderId ?? tracking.shiprocketOrderId ?? undefined;
 
   // The margin correction only makes sense once Shiprocket has actually
   // locked in a courier for this shipment (an AWB exists) — before that,
@@ -337,14 +360,21 @@ export default async function handler(request: Request): Promise<Response> {
   const costCorrection: CostCorrectionResult = { attempted: false, success: false, message: null, actualFreightCharge: null, delta: null };
   const updates: Record<string, unknown> = { shipping_error: null };
 
-  if (effectiveAwbCode && effectiveShiprocketOrderId) {
+  // Learned the Shiprocket order id from the tracking lookup itself, and it
+  // wasn't already on file — save it so future refreshes (including the
+  // automatic one on page load) don't need to rediscover it every time.
+  if (!shiprocketOrderId && !order.shiprocket_order_id && tracking.shiprocketOrderId) {
+    updates.shiprocket_order_id = tracking.shiprocketOrderId;
+  }
+
+  if (effectiveAwbCode && costCorrectionShiprocketOrderId) {
     costCorrection.attempted = true;
 
     if (!shiprocketToken) {
       costCorrection.message = tokenError;
     } else {
       const { freightCharge, error: freightError } = await fetchActualFreightCharge(
-        effectiveShiprocketOrderId,
+        costCorrectionShiprocketOrderId,
         shiprocketToken,
       );
 
