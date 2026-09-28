@@ -359,6 +359,22 @@ export default function PackingScanner({ onDecode, resultBanner, disabled }: Pac
           </div>
 
           <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+            {/*
+              html5-qrcode inserts its own <video>/<canvas> here sized to the
+              camera's native aspect ratio, not stretched to fill this
+              container — left alone, that renders as a small letterboxed
+              window instead of an actual full-screen camera view. Forcing
+              them to fill + object-fit: cover is what actually makes this
+              *look* full-screen, not just the outer wrapper being
+              full-viewport.
+            */}
+            <style>{`
+              #${READER_ELEMENT_ID} video, #${READER_ELEMENT_ID} canvas {
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+              }
+            `}</style>
             <div id={READER_ELEMENT_ID} style={{ width: "100%", height: "100%" }} />
             {isOpening && !isCameraActive && (
               <div
