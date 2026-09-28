@@ -12,6 +12,7 @@ import {
   Bell,
   BarChart3,
   SlidersHorizontal,
+  QrCode,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
@@ -56,6 +57,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Package, label: "Products", path: "/products" },
     { icon: Boxes, label: "Inventory", path: "/inventory" },
+    { icon: QrCode, label: "Manage SKUs", path: "/skus" },
     { icon: ShoppingCart, label: "Orders", path: "/orders" },
     { icon: BarChart3, label: "Sales Reports", path: "/sales-reports" },
     { icon: Percent, label: "Coupons", path: "/coupons" },

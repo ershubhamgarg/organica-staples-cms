@@ -133,6 +133,11 @@ export interface Order {
   cod_payment_amount?: number | null;
   cod_payment_mode?: "cash" | "card" | "upi" | string | null;
   cod_confirmed_at?: string | null;
+  /** See supabase/migrations/0001_scan_and_pack.sql — driven entirely by
+   * the Scan & Pack module, not by `status`/`shipping_status`. */
+  packing_status?: "not_started" | "in_progress" | "packed" | null;
+  packed_by?: string | null;
+  packed_at?: string | null;
 }
 
 export type OrderRemark = {

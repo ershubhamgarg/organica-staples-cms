@@ -983,6 +983,21 @@ export default function OrderDetails() {
           }}
         >
           <div style={{ display: "flex", gap: "1rem" }}>
+            {["pending", "processing"].includes(order.status) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<PackageCheck size={14} />}
+                onClick={() => navigate(`/orders/${order.id}/pack`)}
+                data-tooltip="Scan each pack against this order before it ships"
+              >
+                {order.packing_status === "packed"
+                  ? "Packed"
+                  : order.packing_status === "in_progress"
+                    ? "Resume Packing"
+                    : "Scan & Pack"}
+              </Button>
+            )}
             <select
               value={order.status}
               onChange={(e) => handleStatusUpdate(e.target.value)}

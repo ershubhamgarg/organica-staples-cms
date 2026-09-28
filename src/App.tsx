@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, Suspense, lazy } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -22,6 +22,13 @@ import Login from "./pages/Login";
 import { useAuthStore } from "./store/authStore";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "sonner";
+import Spinner from "./components/ui/Spinner";
+
+// Lazy-loaded: these two pull in the QR/camera-scanning libraries
+// (html5-qrcode, qrcode), which are only ever needed by Scan & Pack and
+// Manage SKUs — every other page shouldn't pay for that in its bundle.
+const SkuManagement = lazy(() => import("./pages/SkuManagement"));
+const ScanAndPack = lazy(() => import("./pages/ScanAndPack"));
 
 const ProtectedRoute = () => {
   const { user, isLoading } = useAuthStore();
@@ -75,6 +82,22 @@ function App() {
             <Route path="inventory" element={<Inventory />} />
             <Route path="orders" element={<Orders />} />
             <Route path="orders/:id" element={<OrderDetails />} />
+            <Route
+              path="orders/:id/pack"
+              element={
+                <Suspense fallback={<Spinner />}>
+                  <ScanAndPack />
+                </Suspense>
+              }
+            />
+            <Route
+              path="skus"
+              element={
+                <Suspense fallback={<Spinner />}>
+                  <SkuManagement />
+                </Suspense>
+              }
+            />
             <Route path="sales-reports" element={<SalesReports />} />
             <Route path="coupons" element={<Coupons />} />
             <Route path="combos" element={<Combos />} />

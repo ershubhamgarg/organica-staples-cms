@@ -1026,7 +1026,126 @@ sending (there's no WhatsApp Business API wired up — no message is ever sent a
   the customer's chat the way the other two buttons do — whoever shares picks the conversation
   themselves.
 
+## Scan & Pack module
+
+Prevents packing mistakes (e.g. a 100 g pack shipped for a 200 g order) by
+requiring staff to scan every physical pack's QR code against the order
+before it can be marked ready to ship. Full staff-facing instructions:
+`docs/scan-and-pack-staff-guide.md`.
+
+**Setup required before use**: run `supabase/migrations/0001_scan_and_pack.sql`
+against the database (Supabase SQL Editor, or `psql`/any Postgres client —
+this was written but deliberately *not run* against production from this
+session; see that file's own header comment for the full schema and the
+reasoning behind each non-obvious choice). Nothing else needs configuring —
+no new env vars.
+
+**Architecture**:
+- `api/_lib/packing.ts` — pure, DB-free resolution/validation logic
+  (`resolveOrderPackingItems`, `validateScan`, `isPackingComplete`,
+  `hasOrderDrifted`) — unit tested in `api/_lib/packing.test.ts` (21 cases).
+  Kept deliberately separate from the DB-touching Edge functions so the
+  actual business rules (wrong pack size, overpacking, bundle expansion,
+  duplicate-SKU order lines, etc.) can be tested without a database.
+- `api/_lib/skuCatalog.ts` — loads products + variants + `bundle_components`
+  into the shape `packing.ts` expects.
+- `api/skus/{review,assign}.ts` — the SKU review/assignment workflow.
+  `assign.ts` requires `confirmOverwrite: true` to change an *already*
+  assigned SKU (a 409 with `requiresConfirmation` otherwise) — this is what
+  "prevent silent SKU changes that could invalidate printed labels" means in
+  practice; every assignment/change is also written to `sku_change_log`.
+- `api/orders/packing/{start,status,scan,undo,complete,reopen,resync}.ts` —
+  one packing session per order, enforced by a partial unique index
+  (`packing_sessions_one_active_per_order`) rather than application-level
+  locking — a second "start" call for the same order resumes the existing
+  session instead of racing a new one.
+- Two things needed real DB-level atomicity that PostgREST's `.update()`
+  can't express (a conditional "increment, but only if still under the
+  limit" over the *current* row value): `packing_increment_item` /
+  `packing_decrement_item`, two tiny single-statement SQL functions. Session
+  completion/reopen (`packing_complete_session` / `packing_reopen_session`)
+  are plpgsql functions instead, each a single row-locked (`for update`)
+  transaction, which is also what makes repeated completion/reopen calls
+  naturally idempotent rather than needing separate idempotency-key
+  plumbing like scans do.
+- **Scan idempotency**: `scan.ts` inserts a `pending` `packing_scan_events`
+  row keyed on `(session_id, idempotency_key)` *before* touching
+  `packed_qty` — a retried request with the same key always hits that
+  unique constraint and returns the already-computed result instead of
+  incrementing twice. The idempotency key is generated client-side, once per
+  physical scan attempt (see `usePackingStore.scan`).
+- **Camera duplicate-frame guard**: `src/components/PackingScanner.tsx`
+  ignores a repeated decode of the *same* text within 1.5s of the last one —
+  a camera can decode one visible QR across dozens of frames, which must
+  count as one scan event, not dozens.
+- `src/utils/skuQr.ts` — QR payload is the bare SKU string, nothing else
+  (no JSON, no URL) — this is a different, *operational* QR from any
+  customer-facing storefront QR, which encodes product page URLs. Round-trip
+  encode→rasterize→decode is unit tested in `skuQr.test.ts` (via `qrcode` +
+  `pngjs` + `jsqr`), not just that the right string was passed to the
+  library.
+
+**Decisions made without further clarification** (per the original request:
+"make reasonable decisions and document them" where a business rule isn't
+covered by existing conventions):
+- **No role/permission tiers exist anywhere in this app** — every
+  authenticated admin can already cancel orders, issue refunds, etc.
+  "Restricted reset/reopen actions must require... appropriate permissions"
+  is satisfied the same way every other destructive action here is: any
+  authenticated admin, with a required *reason* as the audit trail instead
+  of a permission check.
+- **This catalog's "combo" feature has no fixed-SKU bundle-of-components
+  entity** — `combo_settings`/`is_combo_eligible` is a checkout-time
+  discount across separately-chosen products, not a stocked kit product.
+  `bundle_components` + `products.is_bundle` are added for
+  forward-compatibility, but are expected to stay empty until such a
+  product is introduced; until then, section 6 of the spec doesn't apply to
+  any real order today.
+- **`orders` has no `updated_at` column** — "has this order changed since
+  the packing session started" is detected by snapshotting `items` +
+  `status` at session start and diffing against the live row at completion
+  time (`hasOrderDrifted`), not a timestamp comparison.
+- **No existing "packed"/"ready-to-ship" state** in `orders.status` or
+  `shipping_status` (both pre-existing state machines used elsewhere —
+  Sales Reports, shipping sync, status badges). Packing progress lives
+  entirely in a new, separate `orders.packing_status` column instead of
+  overloading either one.
+- **A product without variants had no SKU field at all** before this —
+  only `product_variants.sku` existed (unused, always null). Added
+  `products.sku` for that case.
+- **SKU format**: uppercase letters/digits/hyphens, 3-40 characters — chosen
+  for scanner/label friendliness, not dictated by any existing convention
+  (there wasn't one).
+- **Packing-eligible order statuses**: `pending` and `processing` only —
+  kept as its own narrow list in `packing.ts` rather than reusing any
+  existing status logic, since "packable" is a Scan & Pack–specific
+  question.
+
+**Known limitations** (also called out in the staff guide):
+- **No unique per-pack identity.** Every pack of a given SKU carries the
+  identical QR code — this module verifies *product/variant and count*, not
+  that two scans came from two physically distinct packs. Per the original
+  spec, this is out of scope for this version; the "scan, then place in the
+  box" workflow is the mitigation.
+- **No offline support** — a network failure surfaces as a scan error, not
+  a false success, but there's no offline queue/replay.
+- **The migration was written but not applied** to the database from this
+  session (see Setup above) — every backend function that reads/writes the
+  new tables/columns will fail until it's run.
+- **No automated tests exist for the Edge function handlers themselves**
+  (`api/orders/packing/*.ts`, `api/skus/*.ts`) — only the pure logic they
+  call (`packing.ts`) is unit tested. Testing the handlers would mean either
+  a real Supabase test project or a fairly involved Supabase-client mock;
+  out of scope for this pass. The handlers are intentionally thin wrappers
+  around the tested pure functions to keep this gap as small as it
+  reasonably can be.
+- **QR labels print via the browser's print dialog** (`window.print()` with
+  print-only CSS in `SkuManagement.tsx`), not a generated PDF sheet with
+  fixed label dimensions — works with any printer/paper size the browser
+  can already print to, but isn't a die-cut-label-sheet layout.
+
 ## Development Workflow
 - Run development server: `npm run dev`
 - Build for production: `npm run build`
+- Run tests: `npm run test` (Vitest)
 - Linting: `npm run lint`

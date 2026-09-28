@@ -65,4 +65,11 @@ export interface Product {
   created_at?: string;
   /** Absent/empty = a plain single-price product (today's behavior). */
   variants?: ProductVariant[];
+  /** Only meaningful for a product with no variants — a variant-based
+   * product's packable SKUs live on each variant instead. Managed from the
+   * Manage SKUs screen (see api/skus/assign.ts), not this form. */
+  sku?: string | null;
+  /** A sealed, preassembled combo scanned by its own SKU, with its
+   * component SKUs configured under Manage SKUs — see bundle_components. */
+  is_bundle?: boolean;
 }
