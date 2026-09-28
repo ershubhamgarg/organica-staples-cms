@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save, Printer, Download, AlertTriangle } from "lucide-react";
+import { Save, Printer, Download, AlertTriangle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { useSkuStore, type SkuReviewRow } from "../store/skuStore";
 import { useProductStore } from "../store/productStore";
@@ -97,6 +97,7 @@ export default function SkuManagement() {
   const fetchProducts = useProductStore((state) => state.fetchProducts);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [printRows, setPrintRows] = useState<CatalogSkuRow[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchReview();
@@ -124,6 +125,14 @@ export default function SkuManagement() {
     }
     return rows.sort((a, b) => a.sku.localeCompare(b.sku));
   }, [products]);
+
+  const filteredCatalogRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return catalogRows;
+    return catalogRows.filter(
+      (row) => row.sku.toLowerCase().includes(q) || row.name.toLowerCase().includes(q),
+    );
+  }, [catalogRows, searchQuery]);
 
   const toggleSelected = (sku: string) => {
     setSelected((prev) => {
@@ -183,8 +192,20 @@ export default function SkuManagement() {
       )}
 
       <div className="card" style={{ padding: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <strong>All SKUs ({catalogRows.length})</strong>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+            gap: "10px",
+          }}
+        >
+          <strong>
+            All SKUs ({filteredCatalogRows.length}
+            {filteredCatalogRows.length !== catalogRows.length ? ` of ${catalogRows.length}` : ""})
+          </strong>
           <Button
             variant="secondary"
             size="sm"
@@ -196,10 +217,46 @@ export default function SkuManagement() {
           </Button>
         </div>
 
+        <div style={{ position: "relative", marginBottom: "1rem" }}>
+          <Search
+            size={16}
+            style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-secondary)" }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by SKU or product name…"
+            style={{ width: "100%", padding: "10px 36px" }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-secondary)",
+                display: "flex",
+              }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
         {catalogRows.length === 0 ? (
           <p style={{ color: "var(--text-secondary)" }}>No SKUs assigned yet.</p>
+        ) : filteredCatalogRows.length === 0 ? (
+          <p style={{ color: "var(--text-secondary)" }}>No SKUs match "{searchQuery}".</p>
         ) : (
-          catalogRows.map((row) => (
+          filteredCatalogRows.map((row) => (
             <div
               key={row.sku}
               style={{
