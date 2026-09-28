@@ -8,7 +8,12 @@ import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
 import Modal from "../components/ui/Modal";
 import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
-import { generateSkuLabelSheetPdf, LABEL_SHEET_CAPACITY } from "../utils/skuLabelSheet";
+import {
+  generateSkuLabelSheetPdf,
+  LABEL_SHEET_CAPACITY,
+  LABEL_CELL_WIDTH_CM,
+  LABEL_CELL_HEIGHT_CM,
+} from "../utils/skuLabelSheet";
 import { formatCurrency } from "../utils/currency";
 import brandMark from "../assets/annvriksh-mark.png";
 
@@ -331,10 +336,16 @@ export default function SkuManagement() {
             gap: "10px",
           }}
         >
-          <strong>
-            All SKUs ({filteredCatalogRows.length}
-            {filteredCatalogRows.length !== catalogRows.length ? ` of ${catalogRows.length}` : ""})
-          </strong>
+          <div>
+            <strong>
+              All SKUs ({filteredCatalogRows.length}
+              {filteredCatalogRows.length !== catalogRows.length ? ` of ${catalogRows.length}` : ""})
+            </strong>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "2px" }}>
+              A4 sheet label size: {LABEL_CELL_WIDTH_CM.toFixed(1)} × {LABEL_CELL_HEIGHT_CM.toFixed(1)} cm each
+              (3 cols × 10 rows, {LABEL_SHEET_CAPACITY} per sheet)
+            </div>
+          </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <Button
               variant="secondary"
@@ -360,7 +371,7 @@ export default function SkuManagement() {
               icon={<FileDown size={14} />}
               loading={isGeneratingSheet}
               onClick={handleDownloadA4Sheet}
-              data-tooltip="30 labels per A4 sheet (3 columns x 10 rows), ready to print onto sticker sheets"
+              data-tooltip={`${LABEL_SHEET_CAPACITY} labels per A4 sheet (3 columns x 10 rows, ${LABEL_CELL_WIDTH_CM.toFixed(1)} x ${LABEL_CELL_HEIGHT_CM.toFixed(1)} cm each), with crop marks, ready to print onto sticker sheets`}
             >
               Download A4 Sheet (3×10){selected.size > 0 ? ` — Selected (${selected.size})` : " — All"}
             </Button>
