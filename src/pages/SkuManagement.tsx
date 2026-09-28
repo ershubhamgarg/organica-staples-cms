@@ -8,15 +8,25 @@ import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
 import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
 import { formatCurrency } from "../utils/currency";
+import brandMark from "../assets/annvriksh-mark.png";
 
 type CatalogSkuRow = {
   entityType: "product" | "variant";
   entityId: number;
   sku: string;
+  /** Includes the pack size suffix for variants (e.g. "... — 200 gms") —
+   * used in the on-screen list/search, where telling two pack sizes of the
+   * same product apart at a glance matters. NOT used on the printed/
+   * downloaded label, which already shows `weight` as its own line —
+   * repeating it in the name there read as the pack size being printed
+   * twice. See `productName` for that. */
   name: string;
+  /** Bare product name, no pack-size suffix — what the label/PNG uses. */
+  productName: string;
   weight: string | null;
-  /** Selling price after any variant/product-level discount — what a
-   * customer actually pays, same as everywhere else in the CMS shows price. */
+  /** MRP — the undiscounted list price, printed on the label rather than
+   * the current selling price, since a discount is a temporary promotion
+   * and a printed label isn't reprinted every time one starts/ends. */
   price: number;
 };
 
@@ -73,19 +83,19 @@ function AssignRow({ row, onSaved }: { row: SkuReviewRow; onSaved: () => void })
         flexWrap: "wrap",
       }}
     >
-      <div>
+      <div style={{ flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ fontWeight: 600 }}>{row.name}</div>
         <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
           {row.weight ?? ""} {row.category ? `· ${row.category}` : ""}
         </div>
       </div>
-      <div style={{ display: "flex", gap: "8px" }}>
+      <div style={{ display: "flex", gap: "8px", flex: "1 1 240px" }}>
         <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="e.g. ANN-RCP-200"
-          style={{ width: "200px" }}
+          style={{ flex: 1, minWidth: 0 }}
         />
         <Button size="sm" icon={<Save size={14} />} loading={isSaving} disabled={!value.trim()} onClick={handleSave}>
           Save
@@ -118,8 +128,9 @@ export default function SkuManagement() {
           entityId: Number(p.id),
           sku: p.sku,
           name: p.name,
+          productName: p.name,
           weight: p.weight,
-          price: p.price * (1 - (p.discount ?? 0) / 100),
+          price: p.price,
         });
       }
       for (const v of p.variants ?? []) {
@@ -129,8 +140,9 @@ export default function SkuManagement() {
             entityId: v.id!,
             sku: v.sku,
             name: `${p.name} — ${v.label}`,
+            productName: p.name,
             weight: v.weight,
-            price: v.price * (1 - (v.discount_percent ?? 0) / 100),
+            price: v.price,
           });
         }
       }
@@ -169,7 +181,7 @@ export default function SkuManagement() {
   };
 
   const handleDownload = async (row: CatalogSkuRow) => {
-    const dataUrl = await generateSkuLabelPngDataUrl(row);
+    const dataUrl = await generateSkuLabelPngDataUrl({ ...row, name: row.productName });
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = `${row.sku}.png`;
@@ -285,10 +297,15 @@ export default function SkuManagement() {
                 onChange={() => toggleSelected(row.sku)}
               />
               <SkuQrThumb sku={row.sku} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{row.name}</div>
+              {/* min-width: 0 is required here, not optional — a flex item's
+                  default min-width is `auto` (its content's intrinsic
+                  width), which silently defeats `flex: 1` and pushes the
+                  Download button off the edge of a narrow phone screen
+                  instead of letting this text wrap/shrink. */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, overflowWrap: "break-word" }}>{row.name}</div>
                 <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                  <code>{row.sku}</code> {row.weight ? `· ${row.weight}` : ""} · ₹{formatCurrency(row.price)}
+                  <code>{row.sku}</code> {row.weight ? `· ${row.weight}` : ""} · MRP ₹{formatCurrency(row.price)}
                 </div>
               </div>
               <Button variant="ghost" size="sm" icon={<Download size={14} />} onClick={() => handleDownload(row)}>
@@ -341,9 +358,15 @@ function PrintLabel({ row }: { row: CatalogSkuRow }) {
     >
       {dataUrl && <img src={dataUrl} alt="" width={72} height={72} />}
       <div>
-        <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{row.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "2px" }}>
+          <img src={brandMark} alt="" width={14} height={14} />
+          <span style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em", color: "#555" }}>
+            ANNVRIKSH
+          </span>
+        </div>
+        <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{row.productName}</div>
         {row.weight && <div style={{ fontSize: "0.75rem" }}>{row.weight}</div>}
-        <div style={{ fontSize: "0.75rem" }}>₹{formatCurrency(row.price)}</div>
+        <div style={{ fontSize: "0.75rem" }}>MRP ₹{formatCurrency(row.price)}</div>
         <div style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>{row.sku}</div>
       </div>
     </div>

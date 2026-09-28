@@ -43,6 +43,17 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* The default mobile-browser tap flash (a gray/blue overlay on every tap)
+     is one of the biggest "this is a website" tells there is — every native
+     app's buttons/list rows use their own pressed-state instead (see the
+     :active rules below). */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  /* Stops the whole page rubber-banding/bouncing past its edges on iOS —
+     that bounce is a browser-chrome behavior no native app screen has. */
+  overscroll-behavior-y: contain;
 }
 
 body {
@@ -51,6 +62,7 @@ body {
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
 }
 
 #root {
@@ -67,8 +79,16 @@ body {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-lg);
+/* :hover is guarded to real pointer devices everywhere in this file (see
+   the matching rules further down) — without this, a tap on a touchscreen
+   triggers :hover and it then sticks until the next tap elsewhere, which
+   reads as a UI glitch (a button visually "stuck" highlighted/nudged) on
+   mobile in a way it never does with a mouse. Native apps don't have this
+   problem because touch UIs don't have a hover state at all. */
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+  }
 }
 
 /* Custom Scrollbar */
@@ -100,6 +120,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   position: relative;
   min-width: 0;
 }
@@ -150,16 +171,17 @@ body {
   cursor: not-allowed;
 }
 
+/* Real tactile feedback on tap — every native app button does this; it's
+   what a :hover-based lift effect is trying to approximate but can't on
+   touch. Applies everywhere (mouse users get it on click too), unguarded. */
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 .btn-primary {
   background: var(--accent-primary);
   color: var(--color-brand-cream);
   box-shadow: var(--shadow-sm);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  box-shadow: var(--shadow-glow);
-  transform: translateY(-1px);
 }
 
 .btn-secondary {
@@ -168,19 +190,9 @@ body {
   border: 1px solid var(--border-color);
 }
 
-.btn-secondary:hover:not(:disabled) {
-  background: var(--border-color);
-  transform: translateY(-1px);
-}
-
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
-}
-
-.btn-ghost:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .btn-danger {
@@ -189,9 +201,27 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-.btn-danger:hover:not(:disabled) {
-  background: #8C231D;
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--border-color);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: #8C231D;
+    transform: translateY(-1px);
+  }
 }
 
 .btn:focus-visible,
@@ -222,9 +252,9 @@ body {
   position: relative;
 }
 
-.icon-btn:hover:not(:disabled) {
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.9);
   background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .icon-btn:disabled {
@@ -236,9 +266,16 @@ body {
   color: var(--danger);
 }
 
-.icon-btn.danger:hover:not(:disabled) {
-  background: var(--danger-light);
-  color: var(--danger);
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .icon-btn.danger:hover:not(:disabled) {
+    background: var(--danger-light);
+    color: var(--danger);
+  }
 }
 
 /* Tiny inline copy-to-clipboard trigger, sits next to a piece of text */
@@ -257,9 +294,15 @@ body {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.copy-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--accent-primary);
+.copy-btn:active {
+  transform: scale(0.9);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .copy-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent-primary);
+  }
 }
 
 .copy-btn.copied {
@@ -381,8 +424,14 @@ body {
   color: var(--text-primary);
 }
 
-.search-dropdown-item:hover {
+.search-dropdown-item:active {
   background: var(--bg-tertiary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .search-dropdown-item:hover {
+    background: var(--bg-tertiary);
+  }
 }
 
 .search-dropdown-item-icon {
@@ -511,6 +560,11 @@ h1, h2, h3, h4, h5, h6 {
   to { transform: rotate(360deg); }
 }
 
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
 .animate-spin {
   animation: spin 0.8s linear infinite;
 }
@@ -557,6 +611,7 @@ h1, h2, h3, h4, h5, h6 {
 .modal-body {
   padding: 1.5rem 2rem 2rem;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .form-group {
@@ -602,8 +657,10 @@ tbody tr {
   transition: background 0.15s ease;
 }
 
-tbody tr:hover {
-  background: var(--bg-tertiary);
+@media (hover: hover) and (pointer: fine) {
+  tbody tr:hover {
+    background: var(--bg-tertiary);
+  }
 }
 
 /* Status Badges */
@@ -661,11 +718,26 @@ tbody tr:hover {
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
     width: min(280px, 82vw) !important;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    /* A quick ease-out (fast start, gentle settle) reads as a native sheet
+       sliding in — the plain linear-ish `ease` timing this used before felt
+       closer to a CSS demo than an app drawer. */
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
     z-index: 200;
     box-shadow: var(--shadow-lg);
+    /* A drawer that's a hard-edged rectangle flush with the screen edge is
+       one of the more obvious "this is just a shrunk desktop panel" tells —
+       native drawers almost always round the leading edge they slide out
+       from. Padding-box keeps the inner content clipped to match. */
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    overflow-y: auto;
+    /* iOS notch/home-indicator clearance — the drawer is a fixed full-height
+       panel, so it needs its own safe-area padding rather than inheriting
+       any from a parent. */
+    padding-top: max(1.5rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom)) !important;
   }
 
   .sidebar.sidebar-open {
@@ -676,13 +748,19 @@ tbody tr:hover {
     display: inline-flex;
   }
 
+  .sidebar-backdrop {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
   .header-hamburger {
     display: inline-flex;
   }
 
   .app-header {
     padding: 0 1rem;
-    height: 60px !important;
+    padding-top: env(safe-area-inset-top);
+    height: calc(60px + env(safe-area-inset-top)) !important;
   }
 
   .header-search {
@@ -705,8 +783,38 @@ tbody tr:hover {
     grid-template-columns: 1fr !important;
   }
 
+  /* Bottom sheet instead of a centered dialog — a centered popup that's
+     nearly as wide as the screen just reads as a shrunk desktop modal;
+     sliding up from the bottom edge with a rounded top and a grab handle is
+     the pattern every native app (and most mobile-first web apps) actually
+     uses for this. */
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 86vh !important;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    animation: sheetSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modal-card::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--border-color);
+    margin: 10px auto 0;
+    flex-shrink: 0;
+  }
+
   .modal-header {
-    padding: 1.25rem 1.25rem 1rem;
+    padding: 1rem 1.25rem 1rem;
   }
 
   .modal-body {
@@ -753,6 +861,29 @@ tbody tr:hover {
   .form-group select,
   select {
     font-size: 16px;
+  }
+
+  /* 34px (and worse, .copy-btn's 24px) is under Apple/Google's own 44px
+     minimum touch-target guidance — comfortable with a mouse cursor, easy
+     to mis-tap with a fingertip. */
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .copy-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* A checkbox/radio rendered at the browser's native ~13px is a tiny,
+     easy-to-miss tap target on a touchscreen — this transform trick scales
+     the whole control up without needing a custom-built replacement. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+    transform: scale(1.15);
   }
 }
 
