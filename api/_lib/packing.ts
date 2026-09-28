@@ -159,6 +159,11 @@ export function resolveOrderPackingItems(
 export type SessionItemLike = {
   id: number;
   sku: string;
+  /** Human-readable product/variant name (e.g. "Byadgi Red Chilli Powder —
+   * 200 gms") — scan messages lead with this, not the bare SKU, since a SKU
+   * code means nothing to staff at the packing desk glancing at the camera
+   * screen. */
+  label: string;
   productId: string | null;
   requiredQty: number;
   packedQty: number;
@@ -211,7 +216,9 @@ export function validateScan(
   if (!catalogEntry || !catalogEntry.isActive) {
     return {
       outcome: "rejected_unknown_sku",
-      message: `"${sku}" is not a recognized, active SKU.`,
+      // No product name to show here — this SKU isn't recognized at all, so
+      // there's nothing in the catalog to name it after.
+      message: `Unrecognized code — "${sku}" doesn't match any active product.`,
       matchedItem: null,
     };
   }
@@ -236,13 +243,13 @@ export function validateScan(
     if (sameProductLine) {
       return {
         outcome: "rejected_wrong_variant",
-        message: `Wrong pack size — this order needs ${sameProductLine.sku}, not ${sku}.`,
+        message: `Wrong pack size — this order needs ${sameProductLine.label} (${sameProductLine.sku}), not this one.`,
         matchedItem: null,
       };
     }
     return {
       outcome: "rejected_not_ordered",
-      message: `${sku} is not part of this order.`,
+      message: `${catalogEntry.label} is not part of this order.`,
       matchedItem: null,
     };
   }
@@ -250,14 +257,14 @@ export function validateScan(
   if (matchingLine.packedQty >= matchingLine.requiredQty) {
     return {
       outcome: "rejected_overpack",
-      message: `Already have the required ${matchingLine.requiredQty} pack(s) of ${sku} — this scan wasn't counted.`,
+      message: `Already have the required ${matchingLine.requiredQty} pack(s) of ${matchingLine.label} — this scan wasn't counted.`,
       matchedItem: matchingLine,
     };
   }
 
   return {
     outcome: "accepted",
-    message: `Pack ${matchingLine.packedQty + 1} of ${matchingLine.requiredQty} for ${sku} confirmed.`,
+    message: `${matchingLine.label}: pack ${matchingLine.packedQty + 1} of ${matchingLine.requiredQty} confirmed.`,
     matchedItem: matchingLine,
   };
 }

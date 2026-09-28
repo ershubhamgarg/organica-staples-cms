@@ -156,6 +156,7 @@ describe("validateScan", () => {
   const sessionItems: SessionItemLike[] = resolved.map((r, id) => ({
     id,
     sku: r.sku,
+    label: r.label,
     productId: r.productId,
     requiredQty: r.requiredQty,
     packedQty: 0,
@@ -168,9 +169,15 @@ describe("validateScan", () => {
     expect(result.matchedItem?.sku).toBe("ANN-RCP-200");
   });
 
-  it("rejects a 100 g scan when the order needs 200 g, naming the expected size", () => {
+  it("names the product, not just the SKU, in scan messages (unreadable at the packing desk otherwise)", () => {
+    const result = validateScan("ANN-RCP-200", true, sessionItems, index);
+    expect(result.message).toContain(rcp200.label);
+  });
+
+  it("rejects a 100 g scan when the order needs 200 g, naming the expected product and size", () => {
     const result = validateScan("ANN-RCP-100", true, sessionItems, index);
     expect(result.outcome).toBe("rejected_wrong_variant");
+    expect(result.message).toContain(rcp200.label);
     expect(result.message).toMatch(/ANN-RCP-200/);
   });
 
@@ -186,7 +193,7 @@ describe("validateScan", () => {
 
   it("rejects once the required quantity is already reached (overpacking)", () => {
     const full: SessionItemLike[] = [
-      { id: 0, sku: "ANN-RCP-200", productId: "11", requiredQty: 1, packedQty: 1 },
+      { id: 0, sku: "ANN-RCP-200", label: rcp200.label, productId: "11", requiredQty: 1, packedQty: 1 },
     ];
     const result = validateScan("ANN-RCP-200", true, full, index);
     expect(result.outcome).toBe("rejected_overpack");
@@ -206,8 +213,8 @@ describe("validateScan", () => {
 
   it("allows multiple required packs of the same SKU to be scanned intentionally, filling duplicate lines deterministically", () => {
     const twoLines: SessionItemLike[] = [
-      { id: 0, sku: "ANN-RCP-200", productId: "11", requiredQty: 1, packedQty: 0 },
-      { id: 1, sku: "ANN-RCP-200", productId: "11", requiredQty: 2, packedQty: 0 },
+      { id: 0, sku: "ANN-RCP-200", label: rcp200.label, productId: "11", requiredQty: 1, packedQty: 0 },
+      { id: 1, sku: "ANN-RCP-200", label: rcp200.label, productId: "11", requiredQty: 2, packedQty: 0 },
     ];
     const first = validateScan("ANN-RCP-200", true, twoLines, index);
     expect(first.outcome).toBe("accepted");
@@ -233,7 +240,7 @@ describe("isPackingComplete", () => {
   it("is false until every line matches exactly", () => {
     expect(
       isPackingComplete([
-        { id: 0, sku: "A", productId: "1", requiredQty: 2, packedQty: 1 },
+        { id: 0, sku: "A", label: "A", productId: "1", requiredQty: 2, packedQty: 1 },
       ]),
     ).toBe(false);
   });
@@ -241,8 +248,8 @@ describe("isPackingComplete", () => {
   it("is true only when every required quantity is met exactly, none over", () => {
     expect(
       isPackingComplete([
-        { id: 0, sku: "A", productId: "1", requiredQty: 2, packedQty: 2 },
-        { id: 1, sku: "B", productId: "2", requiredQty: 1, packedQty: 1 },
+        { id: 0, sku: "A", label: "A", productId: "1", requiredQty: 2, packedQty: 2 },
+        { id: 1, sku: "B", label: "B", productId: "2", requiredQty: 1, packedQty: 1 },
       ]),
     ).toBe(true);
   });

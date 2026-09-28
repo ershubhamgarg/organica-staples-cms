@@ -133,6 +133,7 @@ export default async function handler(request: Request): Promise<Response> {
   const sessionItems: SessionItemLike[] = (rawItems ?? []).map((r) => ({
     id: r.id,
     sku: r.sku,
+    label: r.label,
     productId: r.product_id,
     requiredQty: r.required_qty,
     packedQty: r.packed_qty,
@@ -168,7 +169,7 @@ export default async function handler(request: Request): Promise<Response> {
       // remaining slot first — the DB, not our pre-check, is what actually
       // enforces the limit.
       finalOutcome = "rejected_overpack";
-      finalMessage = `Already have the required pack(s) of ${validation.matchedItem.sku} — this scan wasn't counted.`;
+      finalMessage = `Already have the required pack(s) of ${validation.matchedItem.label} — this scan wasn't counted.`;
     } else {
       finalItemRow = updatedRow;
     }

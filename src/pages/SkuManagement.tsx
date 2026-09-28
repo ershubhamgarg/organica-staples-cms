@@ -6,6 +6,7 @@ import { useProductStore } from "../store/productStore";
 import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
+import Modal from "../components/ui/Modal";
 import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
 import { formatCurrency } from "../utils/currency";
 import brandMark from "../assets/annvriksh-mark.png";
@@ -30,7 +31,7 @@ type CatalogSkuRow = {
   price: number;
 };
 
-function SkuQrThumb({ sku }: { sku: string }) {
+function SkuQrThumb({ sku, onClick }: { sku: string; onClick: () => void }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +45,25 @@ function SkuQrThumb({ sku }: { sku: string }) {
   }, [sku]);
 
   if (!dataUrl) return <div style={{ width: 64, height: 64 }} />;
-  return <img src={dataUrl} alt={`QR for ${sku}`} width={64} height={64} />;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Enlarge QR for ${sku}`}
+      data-tooltip="Click to enlarge"
+      style={{
+        width: 64,
+        height: 64,
+        padding: 0,
+        border: "none",
+        background: "none",
+        cursor: "zoom-in",
+        flexShrink: 0,
+      }}
+    >
+      <img src={dataUrl} alt={`QR for ${sku}`} width={64} height={64} />
+    </button>
+  );
 }
 
 function AssignRow({ row, onSaved }: { row: SkuReviewRow; onSaved: () => void }) {
@@ -112,6 +131,7 @@ export default function SkuManagement() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [printRows, setPrintRows] = useState<CatalogSkuRow[] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewRow, setPreviewRow] = useState<CatalogSkuRow | null>(null);
 
   useEffect(() => {
     fetchReview();
@@ -296,7 +316,7 @@ export default function SkuManagement() {
                 checked={selected.has(row.sku)}
                 onChange={() => toggleSelected(row.sku)}
               />
-              <SkuQrThumb sku={row.sku} />
+              <SkuQrThumb sku={row.sku} onClick={() => setPreviewRow(row)} />
               {/* min-width: 0 is required here, not optional — a flex item's
                   default min-width is `auto` (its content's intrinsic
                   width), which silently defeats `flex: 1` and pushes the
@@ -324,6 +344,14 @@ export default function SkuManagement() {
         </div>
       )}
 
+      {previewRow && (
+        <QrPreviewModal
+          row={previewRow}
+          onClose={() => setPreviewRow(null)}
+          onDownload={() => handleDownload(previewRow)}
+        />
+      )}
+
       <style>{`
         .print-only-labels { display: none; }
         @media print {
@@ -336,6 +364,52 @@ export default function SkuManagement() {
         }
       `}</style>
     </div>
+  );
+}
+
+function QrPreviewModal({
+  row,
+  onClose,
+  onDownload,
+}: {
+  row: CatalogSkuRow;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    generateSkuLabelPngDataUrl({ ...row, name: row.productName }).then((url) => {
+      if (!cancelled) setDataUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [row]);
+
+  return (
+    <Modal onClose={onClose} title={row.productName} maxWidth="560px">
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.25rem" }}>
+        {dataUrl ? (
+          <img
+            src={dataUrl}
+            alt={`Label for ${row.sku}`}
+            style={{ width: "100%", maxWidth: "480px", height: "auto" }}
+          />
+        ) : (
+          <Spinner />
+        )}
+      </div>
+      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+        <Button icon={<Download size={16} />} onClick={onDownload}>
+          Download PNG
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
