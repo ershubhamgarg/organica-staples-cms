@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Html5Qrcode, type CameraDevice } from "html5-qrcode";
 import {
   Camera,
@@ -305,13 +306,24 @@ export default function PackingScanner({ onDecode, resultBanner, disabled }: Pac
         produces a broken or invisible feed even though the camera stream is
         genuinely running. It lives permanently in this full-screen overlay,
         which itself is only mounted while the camera is meant to be active.
+
+        Rendered via a portal straight into document.body — same reason as
+        Modal.tsx: every page is wrapped in `.animate-fade-in`, which uses
+        `animation-fill-mode: forwards` and so leaves a non-`none` transform
+        on the page wrapper permanently after it finishes. A transformed
+        ancestor becomes the containing block for a `position: fixed`
+        descendant, so without the portal this overlay positions itself
+        relative to the scrollable page column instead of the viewport —
+        exactly "opens as a small portion of the screen" instead of
+        genuinely full-screen.
       */}
-      {(isCameraActive || cameras.length > 0) && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1000,
+      {(isCameraActive || cameras.length > 0) &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
             background: "#000",
             display: isCameraActive || isOpening ? "flex" : "none",
             flexDirection: "column",
@@ -417,7 +429,8 @@ export default function PackingScanner({ onDecode, resultBanner, disabled }: Pac
               </Button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
