@@ -24,9 +24,9 @@ import { Loader2 } from "lucide-react";
 import { Toaster } from "sonner";
 import Spinner from "./components/ui/Spinner";
 
-// Lazy-loaded: these two pull in the QR/camera-scanning libraries
-// (html5-qrcode, qrcode), which are only ever needed by Scan & Pack and
-// Manage SKUs — every other page shouldn't pay for that in its bundle.
+// Lazy-loaded: these two pull in the QR-related libraries (qrcode, jsqr),
+// which are only ever needed by Scan & Pack and Manage SKUs — every other
+// page shouldn't pay for that in its bundle.
 const SkuManagement = lazy(() => import("./pages/SkuManagement"));
 const ScanAndPack = lazy(() => import("./pages/ScanAndPack"));
 

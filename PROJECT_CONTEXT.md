@@ -1074,10 +1074,25 @@ no new env vars.
   unique constraint and returns the already-computed result instead of
   incrementing twice. The idempotency key is generated client-side, once per
   physical scan attempt (see `usePackingStore.scan`).
-- **Camera duplicate-frame guard**: `src/components/PackingScanner.tsx`
-  ignores a repeated decode of the *same* text within 1.5s of the last one —
-  a camera can decode one visible QR across dozens of frames, which must
-  count as one scan event, not dozens.
+- **Camera scanning uses the device's native camera app, not an embedded
+  live-video preview.** `src/components/PackingScanner.tsx`'s "Open Camera"
+  is a plain `<input type="file" accept="image/*" capture="environment">` —
+  on a phone/tablet this launches the actual OS camera; the captured photo
+  is then decoded client-side via `jsQR` (`src/utils/decodeQrPhoto.ts`,
+  downscaled to a max 1200px edge first, since a full-resolution phone photo
+  is needlessly slow to decode). This replaced an embedded `html5-qrcode`
+  live-video scanner after three rounds of real, compounding CSS/layout bugs
+  trying to make that look and behave like a real camera (a hidden container
+  being measured before it was visible; the injected `<video>` rendering at
+  its native aspect ratio instead of filling the container; and finally
+  `position: fixed` breaking because it was a normal child of a page wrapped
+  in `.animate-fade-in`, whose `animation-fill-mode: forwards` leaves a
+  permanent `transform` on it — the same issue `Modal.tsx` already portals
+  around) — instead of chasing a fourth fix, handing the capture UI to the
+  OS sidesteps the entire class of problem. Each photo is a discrete,
+  deliberate action, so there's no "same QR held in frame for 30 frames"
+  problem an embedded scanner has to debounce — every capture is exactly
+  one scan attempt.
 - `src/utils/skuQr.ts` — QR payload is the bare SKU string, nothing else
   (no JSON, no URL) — this is a different, *operational* QR from any
   customer-facing storefront QR, which encodes product page URLs. Round-trip
@@ -1122,6 +1137,11 @@ covered by existing conventions):
   question.
 
 **Known limitations** (also called out in the staff guide):
+- **Scanning is one photo per pack, not a live continuous scan.** There's no
+  real-time viewfinder feedback (crosshair, "found it" flash) before the
+  photo is taken — staff snap a photo, then find out if it decoded. A blurry
+  or badly-lit photo has to be retaken; this is the direct tradeoff for using
+  the device's real camera app instead of an embedded scanner (see above).
 - **No unique per-pack identity.** Every pack of a given SKU carries the
   identical QR code — this module verifies *product/variant and count*, not
   that two scans came from two physically distinct packs. Per the original

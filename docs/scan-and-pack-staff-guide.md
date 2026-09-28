@@ -17,10 +17,11 @@ the box. The system checks each scan against what was actually ordered, so a
    doesn't have a SKU/QR set up yet. Tell whoever manages Manage SKUs; don't
    try to work around it by scanning a similar product's SKU.
 4. For each pack you physically place in the box:
-   - **Camera**: point it at the label's QR code. Once it registers, move the
-     pack out of frame (or press **Scan Next Pack** if you see it) before
-     scanning the next one — the camera won't double-count the same QR held
-     in view.
+   - **Camera**: tap **Open Camera** — this opens your phone/tablet's own
+     camera app. Take a photo of the label's QR code (fill the frame, hold
+     steady, good light) and confirm it like you would any photo. The app
+     reads the QR from that photo automatically. If it says it couldn't find
+     a QR code, just retake the photo closer/steadier.
    - **USB/Bluetooth scanner**: just scan — it types the SKU and presses
      Enter automatically, same as typing it in yourself.
    - **No scanner handy**: type the SKU into the box and press Enter.
