@@ -6,7 +6,8 @@ import { useProductStore } from "../store/productStore";
 import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
-import { generateSkuQrPngDataUrl } from "../utils/skuQr";
+import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
+import { formatCurrency } from "../utils/currency";
 
 type CatalogSkuRow = {
   entityType: "product" | "variant";
@@ -14,6 +15,9 @@ type CatalogSkuRow = {
   sku: string;
   name: string;
   weight: string | null;
+  /** Selling price after any variant/product-level discount — what a
+   * customer actually pays, same as everywhere else in the CMS shows price. */
+  price: number;
 };
 
 function SkuQrThumb({ sku }: { sku: string }) {
@@ -109,7 +113,14 @@ export default function SkuManagement() {
     const rows: CatalogSkuRow[] = [];
     for (const p of products) {
       if (p.sku && (!p.variants || p.variants.length === 0)) {
-        rows.push({ entityType: "product", entityId: Number(p.id), sku: p.sku, name: p.name, weight: p.weight });
+        rows.push({
+          entityType: "product",
+          entityId: Number(p.id),
+          sku: p.sku,
+          name: p.name,
+          weight: p.weight,
+          price: p.price * (1 - (p.discount ?? 0) / 100),
+        });
       }
       for (const v of p.variants ?? []) {
         if (v.sku) {
@@ -119,6 +130,7 @@ export default function SkuManagement() {
             sku: v.sku,
             name: `${p.name} — ${v.label}`,
             weight: v.weight,
+            price: v.price * (1 - (v.discount_percent ?? 0) / 100),
           });
         }
       }
@@ -156,11 +168,11 @@ export default function SkuManagement() {
     }, 200);
   };
 
-  const handleDownload = async (sku: string) => {
-    const dataUrl = await generateSkuQrPngDataUrl(sku);
+  const handleDownload = async (row: CatalogSkuRow) => {
+    const dataUrl = await generateSkuLabelPngDataUrl(row);
     const a = document.createElement("a");
     a.href = dataUrl;
-    a.download = `${sku}.png`;
+    a.download = `${row.sku}.png`;
     a.click();
   };
 
@@ -276,10 +288,10 @@ export default function SkuManagement() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600 }}>{row.name}</div>
                 <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                  <code>{row.sku}</code> {row.weight ? `· ${row.weight}` : ""}
+                  <code>{row.sku}</code> {row.weight ? `· ${row.weight}` : ""} · ₹{formatCurrency(row.price)}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" icon={<Download size={14} />} onClick={() => handleDownload(row.sku)}>
+              <Button variant="ghost" size="sm" icon={<Download size={14} />} onClick={() => handleDownload(row)}>
                 PNG
               </Button>
             </div>
@@ -331,6 +343,7 @@ function PrintLabel({ row }: { row: CatalogSkuRow }) {
       <div>
         <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{row.name}</div>
         {row.weight && <div style={{ fontSize: "0.75rem" }}>{row.weight}</div>}
+        <div style={{ fontSize: "0.75rem" }}>₹{formatCurrency(row.price)}</div>
         <div style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>{row.sku}</div>
       </div>
     </div>
