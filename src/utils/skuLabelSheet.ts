@@ -6,6 +6,10 @@ import { generateSkuQrPngDataUrl, type SkuLabelInfo } from "./skuQr";
 const COLS = 3;
 const ROWS = 10;
 const PER_PAGE = COLS * ROWS;
+/** How many label slots one A4 sheet holds — exported so callers (deciding
+ * how many copies of each selected SKU to generate) can fill a sheet
+ * completely rather than leaving blank cells on it. */
+export const LABEL_SHEET_CAPACITY = PER_PAGE;
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -54,30 +58,52 @@ export async function generateSkuLabelSheetPdf(rows: SkuLabelInfo[]): Promise<js
 
       const textX = cellX + cellPadding + qrSize + 2;
       const textMaxWidth = cellWidth - cellPadding * 2 - qrSize - 2;
-      let textY = cellY + 4.5;
 
-      doc.setTextColor(20);
+      // Vertically centered as one block against the cell height — the same
+      // treatment the downloadable PNG label already gets (see
+      // generateSkuLabelPngDataUrl in skuQr.ts). Previously this started
+      // from a fixed offset from the cell's top regardless of content, so a
+      // short label's text sat noticeably higher than its QR code (which
+      // *is* centered) instead of lining up with it.
+      const NAME_LINE_HEIGHT = 2.6;
+      const DETAIL_LINE_HEIGHT = 2.3;
+      const GAP_BEFORE_SKU = 1;
+      const SKU_LINE_HEIGHT = 2.5;
+      const FIRST_BASELINE_OFFSET = 2; // top-of-block to first line's baseline
+
       doc.setFont("helvetica", "bold");
       doc.setFontSize(6.5);
       const nameLines: string[] = doc.splitTextToSize(row.name, textMaxWidth);
       const shownNameLines = nameLines.slice(0, 2);
+
+      const detailCount = (row.weight ? 1 : 0) + (row.price != null ? 1 : 0);
+      const textBlockHeight =
+        shownNameLines.length * NAME_LINE_HEIGHT +
+        detailCount * DETAIL_LINE_HEIGHT +
+        GAP_BEFORE_SKU +
+        SKU_LINE_HEIGHT;
+
+      let textY = cellY + (cellHeight - textBlockHeight) / 2 + FIRST_BASELINE_OFFSET;
+
+      doc.setTextColor(20);
       doc.text(shownNameLines, textX, textY);
-      textY += shownNameLines.length * 2.6;
+      textY += shownNameLines.length * NAME_LINE_HEIGHT;
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(5.5);
       if (row.weight) {
         doc.text(row.weight, textX, textY);
-        textY += 2.3;
+        textY += DETAIL_LINE_HEIGHT;
       }
       if (row.price != null) {
         doc.text(`MRP ${money(row.price)}`, textX, textY);
-        textY += 2.3;
+        textY += DETAIL_LINE_HEIGHT;
       }
 
+      textY += GAP_BEFORE_SKU;
       doc.setFont("courier", "normal");
       doc.setFontSize(6);
-      doc.text(row.sku, textX, Math.min(textY, cellY + cellHeight - 2.5));
+      doc.text(row.sku, textX, Math.min(textY, cellY + cellHeight - 1.5));
     }
   }
 

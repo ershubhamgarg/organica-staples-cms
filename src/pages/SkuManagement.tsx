@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Save, Printer, Download, AlertTriangle, Search, X, FileDown } from "lucide-react";
+import { Save, Printer, Download, AlertTriangle, Search, X, FileDown, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useSkuStore, type SkuReviewRow } from "../store/skuStore";
 import { useProductStore } from "../store/productStore";
@@ -8,7 +8,7 @@ import Spinner from "../components/ui/Spinner";
 import PageHeader from "../components/ui/PageHeader";
 import Modal from "../components/ui/Modal";
 import { generateSkuQrPngDataUrl, generateSkuLabelPngDataUrl } from "../utils/skuQr";
-import { generateSkuLabelSheetPdf } from "../utils/skuLabelSheet";
+import { generateSkuLabelSheetPdf, LABEL_SHEET_CAPACITY } from "../utils/skuLabelSheet";
 import { formatCurrency } from "../utils/currency";
 import brandMark from "../assets/annvriksh-mark.png";
 
@@ -134,6 +134,8 @@ export default function SkuManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [previewRow, setPreviewRow] = useState<CatalogSkuRow | null>(null);
   const [isGeneratingSheet, setIsGeneratingSheet] = useState(false);
+  const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchReview();
@@ -189,6 +191,25 @@ export default function SkuManagement() {
     });
   };
 
+  const allFilteredSelected =
+    filteredCatalogRows.length > 0 && filteredCatalogRows.every((r) => selected.has(r.sku));
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        // Deselect only what's currently visible under the search filter —
+        // a selection made while filtered shouldn't vanish for rows the
+        // filter is just hiding right now.
+        const next = new Set(prev);
+        for (const r of filteredCatalogRows) next.delete(r.sku);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const r of filteredCatalogRows) next.add(r.sku);
+      return next;
+    });
+  };
+
   const handlePrintSelected = () => {
     const rows = catalogRows.filter((r) => selected.has(r.sku));
     if (rows.length === 0) {
@@ -210,21 +231,11 @@ export default function SkuManagement() {
     a.click();
   };
 
-  // Falls back to every assigned SKU when nothing is checked — a sheet
-  // maker is more often "give me everything to print" than "print my
-  // current selection," and an empty sheet would otherwise be a confusing
-  // silent no-op the first time someone tries this without having
-  // selected anything yet.
-  const handleDownloadA4Sheet = async () => {
-    const source = selected.size > 0 ? catalogRows.filter((r) => selected.has(r.sku)) : catalogRows;
-    if (source.length === 0) {
-      toast.error("No SKUs to include on a sheet yet.");
-      return;
-    }
+  const generateSheet = async (rows: CatalogSkuRow[]) => {
     setIsGeneratingSheet(true);
     try {
       const doc = await generateSkuLabelSheetPdf(
-        source.map((row) => ({ ...row, name: row.productName })),
+        rows.map((row) => ({ ...row, name: row.productName })),
       );
       doc.save("annvriksh-sku-labels-a4.pdf");
     } catch (err) {
@@ -232,6 +243,54 @@ export default function SkuManagement() {
     } finally {
       setIsGeneratingSheet(false);
     }
+  };
+
+  // Falls back to every assigned SKU when nothing is checked — a sheet
+  // maker is more often "give me everything to print" than "print my
+  // current selection," and an empty sheet would otherwise be a confusing
+  // silent no-op the first time someone tries this without having selected
+  // anything yet. There's nothing to ask a quantity for in that case (no
+  // explicit selection to attach a count to), so it downloads directly —
+  // one of each. Any actual selection always goes through the quantity
+  // modal below instead of guessing.
+  const handleDownloadA4Sheet = async () => {
+    if (selected.size === 0) {
+      if (catalogRows.length === 0) {
+        toast.error("No SKUs to include on a sheet yet.");
+        return;
+      }
+      await generateSheet(catalogRows);
+      return;
+    }
+
+    const selectedRows = catalogRows.filter((r) => selected.has(r.sku));
+
+    // Defaults to filling one sheet evenly (as before), just as a starting
+    // point in the modal rather than applied silently — the admin can
+    // change any of these before generating.
+    const base = Math.floor(LABEL_SHEET_CAPACITY / selectedRows.length);
+    const remainder = LABEL_SHEET_CAPACITY % selectedRows.length;
+    setQuantities(
+      Object.fromEntries(
+        selectedRows.map((r, i) => [r.sku, Math.max(1, base + (i < remainder ? 1 : 0))]),
+      ),
+    );
+    setShowQuantityModal(true);
+  };
+
+  const handleConfirmQuantities = async () => {
+    const selectedRows = catalogRows.filter((r) => selected.has(r.sku));
+    const expanded: CatalogSkuRow[] = [];
+    for (const row of selectedRows) {
+      const copies = Math.max(0, Math.floor(quantities[row.sku] ?? 0));
+      for (let c = 0; c < copies; c++) expanded.push(row);
+    }
+    if (expanded.length === 0) {
+      toast.error("Enter at least one copy for at least one SKU.");
+      return;
+    }
+    setShowQuantityModal(false);
+    await generateSheet(expanded);
   };
 
   if (isLoading && catalogRows.length === 0) return <Spinner />;
@@ -277,6 +336,15 @@ export default function SkuManagement() {
             {filteredCatalogRows.length !== catalogRows.length ? ` of ${catalogRows.length}` : ""})
           </strong>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={allFilteredSelected ? <Square size={14} /> : <CheckSquare size={14} />}
+              disabled={filteredCatalogRows.length === 0}
+              onClick={toggleSelectAll}
+            >
+              {allFilteredSelected ? "Deselect All" : "Select All"}
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -388,6 +456,96 @@ export default function SkuManagement() {
           onClose={() => setPreviewRow(null)}
           onDownload={() => handleDownload(previewRow)}
         />
+      )}
+
+      {showQuantityModal && (
+        <Modal
+          onClose={() => setShowQuantityModal(false)}
+          title="How many of each?"
+          icon={<FileDown size={20} />}
+          maxWidth="480px"
+        >
+          <p style={{ color: "var(--text-secondary)", marginBottom: "1.25rem", fontSize: "0.9rem" }}>
+            Set how many copies of each of your {selected.size} selected SKU
+            {selected.size === 1 ? "" : "s"} to print — pre-filled to fill one
+            sheet ({LABEL_SHEET_CAPACITY} labels) evenly, but change any of them.
+            They'll be split across as many A4 sheets as the total needs.
+          </p>
+          <div style={{ maxHeight: "45vh", overflowY: "auto", marginBottom: "1.25rem" }}>
+            {catalogRows
+              .filter((r) => selected.has(r.sku))
+              .map((row) => (
+                <div
+                  key={row.sku}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    padding: "8px 0",
+                    borderBottom: "1px solid var(--border-color)",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{row.name}</div>
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+                      <code>{row.sku}</code>
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={quantities[row.sku] ?? 1}
+                    onChange={(e) =>
+                      setQuantities((prev) => ({
+                        ...prev,
+                        [row.sku]: parseInt(e.target.value, 10) || 0,
+                      }))
+                    }
+                    style={{ width: "70px", flexShrink: 0 }}
+                  />
+                </div>
+              ))}
+          </div>
+          {(() => {
+            const totalQty = Object.values(quantities).reduce(
+              (sum, n) => sum + Math.max(0, n || 0),
+              0,
+            );
+            const sheetCount = totalQty === 0 ? 0 : Math.ceil(totalQty / LABEL_SHEET_CAPACITY);
+            const lastSheetFilled =
+              totalQty === 0
+                ? 0
+                : totalQty % LABEL_SHEET_CAPACITY === 0
+                  ? LABEL_SHEET_CAPACITY
+                  : totalQty % LABEL_SHEET_CAPACITY;
+            const isFull = totalQty > 0 && lastSheetFilled === LABEL_SHEET_CAPACITY;
+            const remainingToFill = isFull ? 0 : LABEL_SHEET_CAPACITY - lastSheetFilled;
+
+            return (
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  marginBottom: "1rem",
+                  color: isFull ? "var(--success)" : "var(--warning)",
+                  fontWeight: 600,
+                }}
+              >
+                {totalQty} label{totalQty === 1 ? "" : "s"} total — {sheetCount || 0} sheet
+                {sheetCount === 1 ? "" : "s"}, last sheet {lastSheetFilled} of {LABEL_SHEET_CAPACITY} filled
+                {!isFull && totalQty > 0 && ` (add ${remainingToFill} more to fill it completely)`}
+              </div>
+            );
+          })()}
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => setShowQuantityModal(false)}>
+              Cancel
+            </Button>
+            <Button loading={isGeneratingSheet} onClick={handleConfirmQuantities}>
+              Generate PDF
+            </Button>
+          </div>
+        </Modal>
       )}
 
       <style>{`
