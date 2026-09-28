@@ -15,7 +15,20 @@ const READER_ELEMENT_ID = "packing-scan-reader";
 const SAME_SKU_COOLDOWN_MS = 1500;
 
 interface PackingScannerProps {
-  onDecode: (text: string) => void;
+  /**
+   * Called on every camera decode AND every manual/USB-scanner submit —
+   * `source` tells the caller which, since only a camera decode needs a
+   * "confirm this product" step (manual typing/an external scanner already
+   * requires a deliberate Enter/Submit).
+   */
+  onDecode: (text: string, source: "camera" | "manual") => void;
+  /**
+   * While true, camera decodes are ignored entirely (manual/USB entry still
+   * works) — set by the parent while it's showing the "confirm this
+   * product" prompt for a just-decoded camera read, so a QR still sitting
+   * in frame can't fire again underneath the confirmation.
+   */
+  paused?: boolean;
   disabled?: boolean;
 }
 
@@ -26,9 +39,13 @@ interface PackingScannerProps {
  * handles as long as it's focused; staff can just leave it focused and scan
  * with the external device instead of the camera.
  */
-export default function PackingScanner({ onDecode, disabled }: PackingScannerProps) {
+export default function PackingScanner({ onDecode, paused = false, disabled }: PackingScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const lastDecodedRef = useRef<{ text: string; at: number } | null>(null);
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -39,6 +56,7 @@ export default function PackingScanner({ onDecode, disabled }: PackingScannerPro
 
   const handleDetected = useCallback(
     (text: string) => {
+      if (pausedRef.current) return;
       const now = Date.now();
       const last = lastDecodedRef.current;
       if (last && last.text === text && now - last.at < SAME_SKU_COOLDOWN_MS) {
@@ -47,7 +65,7 @@ export default function PackingScanner({ onDecode, disabled }: PackingScannerPro
         return;
       }
       lastDecodedRef.current = { text, at: now };
-      onDecode(text);
+      onDecode(text, "camera");
     },
     [onDecode],
   );
@@ -141,7 +159,7 @@ export default function PackingScanner({ onDecode, disabled }: PackingScannerPro
     e.preventDefault();
     const value = manualValue.trim();
     if (!value) return;
-    onDecode(value);
+    onDecode(value, "manual");
     setManualValue("");
   };
 
@@ -233,17 +251,66 @@ export default function PackingScanner({ onDecode, disabled }: PackingScannerPro
         </div>
       )}
 
+      {/*
+        Always rendered (never display:none) — html5-qrcode measures this
+        container's size when .start() is called to size the <video> it
+        inserts, and starting it while the container is hidden/zero-size
+        (which conditionally rendering it would do) produces a broken or
+        invisible feed even though the camera stream is genuinely running.
+        The "camera is off" state is a plain overlay on top instead.
+      */}
       <div
-        id={READER_ELEMENT_ID}
         style={{
+          position: "relative",
           width: "100%",
           maxWidth: "360px",
+          minHeight: "280px",
           margin: "0 auto",
-          display: isCameraActive ? "block" : "none",
           borderRadius: "var(--radius-md)",
           overflow: "hidden",
+          background: "#000",
         }}
-      />
+      >
+        <div id={READER_ELEMENT_ID} style={{ width: "100%" }} />
+        {isCameraActive && paused && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.45)",
+              color: "#fff",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              textAlign: "center",
+              padding: "1rem",
+            }}
+          >
+            Confirm the scanned pack below to continue
+          </div>
+        )}
+        {!isCameraActive && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              color: "#fff",
+              background: "rgba(0,0,0,0.55)",
+              fontSize: "0.85rem",
+            }}
+          >
+            <Camera size={28} />
+            Camera is off
+          </div>
+        )}
+      </div>
 
       <form onSubmit={submitManual} style={{ marginTop: "1rem" }}>
         <label
@@ -262,9 +329,9 @@ export default function PackingScanner({ onDecode, disabled }: PackingScannerPro
             placeholder="ANN-RCP-200"
             autoComplete="off"
             style={{ flex: 1, fontSize: "1.1rem", padding: "12px 14px" }}
-            disabled={disabled}
+            disabled={disabled || paused}
           />
-          <Button type="submit" disabled={!manualValue.trim() || disabled}>
+          <Button type="submit" disabled={!manualValue.trim() || disabled || paused}>
             Submit
           </Button>
         </div>

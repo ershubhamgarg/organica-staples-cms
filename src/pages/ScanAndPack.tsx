@@ -97,8 +97,21 @@ export default function ScanAndPack() {
     flashTimeout.current = setTimeout(() => setFlash(null), 3500);
   };
 
-  const handleDecode = async (rawInput: string) => {
+  // A camera decode doesn't submit immediately — it's held here until the
+  // user confirms it's the pack they meant to scan (the camera can misread,
+  // or a neighboring pack's QR can drift into frame). Manual/USB-scanner
+  // entry skips this, since typing a SKU and pressing Enter (or a scanner
+  // doing the same) is already a deliberate action.
+  const [pendingScan, setPendingScan] = useState<string | null>(null);
+  const [isSubmittingScan, setIsSubmittingScan] = useState(false);
+
+  const pendingScanMatch = pendingScan
+    ? items.find((i) => i.sku === pendingScan) ?? null
+    : null;
+
+  const submitScan = async (rawInput: string) => {
     if (!id) return;
+    setIsSubmittingScan(true);
     try {
       const result = await scan(id, rawInput);
       const ok = result.outcome === "accepted";
@@ -117,7 +130,29 @@ export default function ScanAndPack() {
       playScanRejected();
       vibrateRejected();
       toast.error(message);
+    } finally {
+      setIsSubmittingScan(false);
     }
+  };
+
+  const handleDecode = (rawInput: string, source: "camera" | "manual") => {
+    if (source === "manual") {
+      void submitScan(rawInput);
+      return;
+    }
+    // Camera: hold for confirmation instead of submitting right away.
+    setPendingScan(rawInput);
+  };
+
+  const handleConfirmPendingScan = async () => {
+    if (!pendingScan) return;
+    const value = pendingScan;
+    setPendingScan(null);
+    await submitScan(value);
+  };
+
+  const handleCancelPendingScan = () => {
+    setPendingScan(null);
   };
 
   const totalRequired = items.reduce((sum, i) => sum + i.required_qty, 0);
@@ -319,7 +354,40 @@ export default function ScanAndPack() {
                 </div>
               )}
 
-              <PackingScanner onDecode={handleDecode} disabled={isCompleting} />
+              {pendingScan && (
+                <div
+                  className="card"
+                  style={{
+                    padding: "1rem",
+                    marginBottom: "1rem",
+                    borderColor: "var(--accent-primary)",
+                  }}
+                >
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "4px" }}>
+                    Confirm this pack
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: "1.05rem", marginBottom: "2px" }}>
+                    {pendingScanMatch ? pendingScanMatch.label : "Not part of this order"}
+                  </div>
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                    SKU: <code>{pendingScan}</code>
+                    {pendingScanMatch?.weight ? ` · ${pendingScanMatch.weight}` : ""}
+                    {pendingScanMatch
+                      ? ` · ${pendingScanMatch.packed_qty} of ${pendingScanMatch.required_qty} packed so far`
+                      : ""}
+                  </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <Button variant="secondary" onClick={handleCancelPendingScan}>
+                      Cancel — rescan
+                    </Button>
+                    <Button loading={isSubmittingScan} onClick={handleConfirmPendingScan}>
+                      Confirm — count this pack
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <PackingScanner onDecode={handleDecode} paused={Boolean(pendingScan)} disabled={isCompleting} />
             </>
           )}
 
