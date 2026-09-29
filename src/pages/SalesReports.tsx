@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   FileSpreadsheet,
   FileText,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useOrderStore } from "../store/orderStore";
+import { useProductStore } from "../store/productStore";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -25,7 +27,12 @@ import {
   ordersToCSV,
   downloadCSV,
 } from "../utils/salesReport";
-import { SELLER, computeGstSummary, computeOrderTax } from "../utils/gst";
+import {
+  SELLER,
+  computeGstSummary,
+  computeOrderTax,
+  findItemsWithoutHsn,
+} from "../utils/gst";
 import { formatPaymentMethodLabel } from "../utils/collabOrder";
 
 const presetOptions: { value: DatePreset; label: string }[] = [
@@ -107,6 +114,8 @@ function StatCard({
 
 export default function SalesReports() {
   const orders = useOrderStore((state) => state.orders);
+  const products = useProductStore((state) => state.products);
+  const fetchProducts = useProductStore((state) => state.fetchProducts);
   const [preset, setPreset] = useState<DatePreset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -140,6 +149,25 @@ export default function SalesReports() {
   const gstSummary = useMemo(
     () => computeGstSummary(filteredOrders),
     [filteredOrders],
+  );
+
+  // Needed only to show each un-classified item's *current* product HSN —
+  // the report itself reads HSN from the order's checkout snapshot.
+  useEffect(() => {
+    if (products.length === 0) fetchProducts();
+  }, [products.length, fetchProducts]);
+
+  const itemsWithoutHsn = useMemo(
+    () => findItemsWithoutHsn(filteredOrders),
+    [filteredOrders],
+  );
+
+  // Product ids come back from Supabase as numbers despite the `string`
+  // type, so both sides are stringified for the lookup.
+  const productHsnById = useMemo(
+    () =>
+      new Map(products.map((p) => [String(p.id), p.hsn_code?.trim() || null])),
+    [products],
   );
 
   // Shared by the PDF and Excel exports — both are the same tax report,
@@ -607,10 +635,9 @@ export default function SalesReports() {
             )}
 
             <div
-              className="responsive-grid"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                display: "flex",
+                flexDirection: "column",
                 gap: "1.5rem",
               }}
             >
@@ -676,7 +703,6 @@ export default function SalesReports() {
                             style={{
                               padding: "8px 12px",
                               color: "var(--text-secondary)",
-                              maxWidth: "220px",
                             }}
                           >
                             {row.description}
@@ -699,6 +725,133 @@ export default function SalesReports() {
                     </tbody>
                   </table>
                 </div>
+
+                {itemsWithoutHsn.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      padding: "12px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                      background: "var(--bg-primary)",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        marginBottom: "4px",
+                        color: "var(--warning)",
+                      }}
+                    >
+                      Items in the "-" row ({itemsWithoutHsn.length})
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--text-secondary)",
+                        fontSize: "0.8rem",
+                        lineHeight: 1.5,
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      HSN is copied onto each order item at checkout. If a
+                      product shows an HSN here, it was set after these orders
+                      were placed. New orders will pick it up, but these
+                      orders keep the snapshot they were placed with.
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", textAlign: "left" }}>
+                        <thead>
+                          <tr
+                            style={{
+                              borderBottom: "1px solid var(--border-color)",
+                              color: "var(--text-secondary)",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            <th style={{ padding: "6px 10px", fontWeight: 500 }}>
+                              Product
+                            </th>
+                            <th style={{ padding: "6px 10px", fontWeight: 500 }}>
+                              Product ID
+                            </th>
+                            <th style={{ padding: "6px 10px", fontWeight: 500 }}>
+                              Qty
+                            </th>
+                            <th style={{ padding: "6px 10px", fontWeight: 500 }}>
+                              HSN on product now
+                            </th>
+                            <th style={{ padding: "6px 10px", fontWeight: 500 }}>
+                              Orders
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {itemsWithoutHsn.map((item) => {
+                            const productFound = productHsnById.has(item.productId);
+                            const currentHsn = productHsnById.get(item.productId);
+                            return (
+                              <tr
+                                key={`${item.productId}|${item.name}`}
+                                style={{
+                                  borderBottom: "1px solid var(--border-color)",
+                                }}
+                              >
+                                <td style={{ padding: "6px 10px", fontWeight: 500 }}>
+                                  {item.name}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "6px 10px",
+                                    fontFamily: "monospace",
+                                  }}
+                                >
+                                  {item.productId}
+                                </td>
+                                <td style={{ padding: "6px 10px" }}>
+                                  {item.quantity}
+                                </td>
+                                <td style={{ padding: "6px 10px" }}>
+                                  {currentHsn ? (
+                                    <span style={{ fontFamily: "monospace" }}>
+                                      {currentHsn}
+                                    </span>
+                                  ) : products.length === 0 ? (
+                                    "…"
+                                  ) : productFound ? (
+                                    <span style={{ color: "var(--danger)" }}>
+                                      Not set
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "var(--text-secondary)" }}>
+                                      Product not found
+                                    </span>
+                                  )}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "6px 10px",
+                                    fontFamily: "monospace",
+                                    fontSize: "0.8rem",
+                                  }}
+                                >
+                                  {item.orderIds.map((id, index) => (
+                                    <span key={id}>
+                                      {index > 0 && ", "}
+                                      <Link to={`/orders/${id}`}>
+                                        ORD-{id.slice(0, 8).toUpperCase()}
+                                      </Link>
+                                    </span>
+                                  ))}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

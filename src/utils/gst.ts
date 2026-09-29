@@ -330,6 +330,45 @@ export function computeOrderTax(order: Order): OrderTaxBreakdown {
   };
 }
 
+export interface UnassignedHsnItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  orderIds: string[];
+}
+
+/**
+ * The individual products behind the summary's "-" row — order items whose
+ * checkout snapshot carries no `hsn_code`. Grouped by product id + name
+ * (a variant snapshot can share its product's id under a different name).
+ * Cancelled orders are skipped, same as computeGstSummary.
+ */
+export function findItemsWithoutHsn(orders: Order[]): UnassignedHsnItem[] {
+  const groups = new Map<string, UnassignedHsnItem>();
+
+  for (const order of orders) {
+    if (order.status === "cancelled") continue;
+    for (const item of order.items ?? []) {
+      if (item.hsn_code?.trim()) continue;
+      const key = `${item.id}|${item.name}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.quantity += item.quantity;
+        if (!existing.orderIds.includes(order.id)) existing.orderIds.push(order.id);
+      } else {
+        groups.set(key, {
+          productId: String(item.id),
+          name: item.name,
+          quantity: item.quantity,
+          orderIds: [order.id],
+        });
+      }
+    }
+  }
+
+  return Array.from(groups.values()).sort((a, b) => b.quantity - a.quantity);
+}
+
 export interface StateTaxRow {
   state: string;
   stateCode: string | null;
