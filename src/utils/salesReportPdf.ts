@@ -149,6 +149,7 @@ export function downloadSalesReportPDF({
     head: [
       [
         "Order",
+        "Invoice No.",
         "Date",
         "Place of Supply",
         "Type",
@@ -161,6 +162,7 @@ export function downloadSalesReportPDF({
     ],
     body: orderTaxBreakdowns.map((tax) => [
       `ORD-${tax.orderId.slice(0, 8).toUpperCase()}`,
+      tax.invoiceNumber ?? "-",
       tax.orderDate,
       tax.buyerStateCode
         ? `${tax.buyerState} (${tax.buyerStateCode})`

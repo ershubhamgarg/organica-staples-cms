@@ -963,8 +963,9 @@ export default function SalesReports() {
             >
               Each pack size listed separately, grouped by HSN — the rows for
               an HSN add up to its row in the HSN/SAC-wise Tax Summary.
-              Goods only: shipping, convenience and COD charges are in that
-              summary's "Charges" row. Excludes cancelled orders.
+              Goods only: shipping (9965), convenience fee (998399) and COD
+              (996812) charges are in that summary's SAC rows. Excludes
+              cancelled orders.
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", textAlign: "left" }}>

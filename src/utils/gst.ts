@@ -94,18 +94,40 @@ export function isIntraState(buyerState: string | null | undefined): boolean {
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-// The HSN summary mixes real product HSN codes with two synthetic,
-// non-product rows: "Charges" (shipping/convenience/COD, taxed as an
-// incidental supply but not itself an HSN-classified good) and "-" (a
-// product with no HSN code assigned at all). Sorting by tax amount made
-// these interleave unpredictably with real HSN rows — pin them to the end,
-// in that order, so the table reads as "real HSN codes, then the two
-// catch-alls" rather than an arbitrary mix.
+// The HSN summary mixes product HSN codes with non-product rows: the
+// service charges below (each under its own SAC) and "-" (a product with no
+// HSN code assigned at all). Sorting by amount made these interleave
+// unpredictably with product rows, and a plain numeric sort would too (SAC
+// 9965 sorts before HSN 09042210) — so the table always reads "goods, then
+// services, then the unassigned catch-all".
 const UNASSIGNED_HSN = "-";
-const CHARGES_HSN = "Charges";
+
+const SERVICE_CHARGES = [
+  {
+    field: "shipping_amount",
+    sac: "9965",
+    description: "Shipping Charges",
+  },
+  {
+    field: "convenience_fee_amount",
+    sac: "998399",
+    description: "Convenience Fee",
+  },
+  {
+    field: "cod_amount",
+    sac: "996812",
+    description: "COD Charges",
+  },
+] as const satisfies readonly {
+  field: keyof Order;
+  sac: string;
+  description: string;
+}[];
+
+const SERVICE_SACS = new Set<string>(SERVICE_CHARGES.map((c) => c.sac));
 
 function hsnSortRank(hsn: string): number {
-  if (hsn === CHARGES_HSN) return 1;
+  if (SERVICE_SACS.has(hsn)) return 1;
   if (hsn === UNASSIGNED_HSN) return 2;
   return 0;
 }
@@ -122,7 +144,7 @@ function sortHsnLines<T extends { hsn: string }>(lines: T[]): T[] {
 // joining every one of their names into the description makes it an
 // unreadable wall of text, and isn't actually useful (the point of this
 // row is to flag "these need an HSN code assigned", not to list what they
-// are). Real HSN rows and the "Charges" row keep their normal description.
+// are). Real HSN rows and the service-charge rows keep their normal description.
 function describeHsnGroup(hsn: string, names: Set<string>): string {
   if (hsn === UNASSIGNED_HSN) {
     return "Products without an HSN code assigned — add one on the product to classify this sale";
@@ -292,36 +314,35 @@ export function computeOrderTax(order: Order): OrderTaxBreakdown {
   }
 
   // Shipping, convenience and COD charges are incidental to the supply of
-  // goods and taxed at the same rate — grouped under a synthetic "charges"
-  // pseudo-HSN row rather than merged into a product's HSN line.
-  const shipping = round2(order.shipping_amount ?? 0);
-  const convenienceFee = round2(order.convenience_fee_amount ?? 0);
-  const codFee = round2(order.cod_amount ?? 0);
-  const ancillaryAmount = round2(shipping + convenienceFee + codFee);
-
+  // goods and taxed at the same rate — each under its own SAC row, and each
+  // split separately, same as the storefront invoice's per-charge rows.
+  let ancillaryAmount = 0;
   let ancillaryTaxable = 0;
   let ancillaryCgst = 0;
   let ancillarySgst = 0;
   let ancillaryIgst = 0;
 
-  if (ancillaryAmount > 0) {
-    const { taxableValue, taxAmount } = splitInclusiveTax(ancillaryAmount);
+  for (const charge of SERVICE_CHARGES) {
+    const amount = round2(order[charge.field] ?? 0);
+    if (amount <= 0) continue;
+    const { taxableValue, taxAmount } = splitInclusiveTax(amount);
     const cgst = intraState ? round2(taxAmount / 2) : 0;
     const sgst = intraState ? round2(taxAmount - cgst) : 0;
     const igst = intraState ? 0 : taxAmount;
-    ancillaryTaxable = taxableValue;
-    ancillaryCgst = cgst;
-    ancillarySgst = sgst;
-    ancillaryIgst = igst;
+    ancillaryAmount = round2(ancillaryAmount + amount);
+    ancillaryTaxable = round2(ancillaryTaxable + taxableValue);
+    ancillaryCgst = round2(ancillaryCgst + cgst);
+    ancillarySgst = round2(ancillarySgst + sgst);
+    ancillaryIgst = round2(ancillaryIgst + igst);
     addToHsn(
-      "Charges",
-      "Shipping / Convenience / COD Charges",
+      charge.sac,
+      charge.description,
       0,
       taxableValue,
       cgst,
       sgst,
       igst,
-      ancillaryAmount,
+      amount,
     );
   }
 
