@@ -31,6 +31,7 @@ import {
   SELLER,
   computeGstSummary,
   computeOrderTax,
+  computeSkuSales,
   findItemsWithoutHsn,
 } from "../utils/gst";
 import { formatPaymentMethodLabel } from "../utils/collabOrder";
@@ -168,6 +169,40 @@ export default function SalesReports() {
     () =>
       new Map(products.map((p) => [String(p.id), p.hsn_code?.trim() || null])),
     [products],
+  );
+
+  const skuSales = useMemo(
+    () => computeSkuSales(filteredOrders, products),
+    [filteredOrders, products],
+  );
+
+  const skuTotals = useMemo(
+    () =>
+      skuSales.reduce(
+        (acc, row) => ({
+          quantity: acc.quantity + row.quantity,
+          weightKg: acc.weightKg + row.weightKg,
+          grossValue: acc.grossValue + row.grossValue,
+          discount: acc.discount + row.discount,
+          netValue: acc.netValue + row.netValue,
+          taxableValue: acc.taxableValue + row.taxableValue,
+          cgst: acc.cgst + row.cgst,
+          sgst: acc.sgst + row.sgst,
+          igst: acc.igst + row.igst,
+        }),
+        {
+          quantity: 0,
+          weightKg: 0,
+          grossValue: 0,
+          discount: 0,
+          netValue: 0,
+          taxableValue: 0,
+          cgst: 0,
+          sgst: 0,
+          igst: 0,
+        },
+      ),
+    [skuSales],
   );
 
   // Shared by the PDF and Excel exports — both are the same tax report,
@@ -911,6 +946,155 @@ export default function SalesReports() {
                   </table>
                 </div>
               </div>
+            </div>
+          </Card>
+
+          <Card style={{ marginBottom: "1.5rem" }}>
+            <h3 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>
+              SKU-wise Sales
+            </h3>
+            <div
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--text-secondary)",
+                marginBottom: "1rem",
+                lineHeight: 1.5,
+              }}
+            >
+              Each pack size listed separately, grouped by HSN — the rows for
+              an HSN add up to its row in the HSN/SAC-wise Tax Summary.
+              Goods only: shipping, convenience and COD charges are in that
+              summary's "Charges" row. Excludes cancelled orders.
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", textAlign: "left" }}>
+                <thead>
+                  <tr
+                    style={{
+                      borderBottom: "1px solid var(--border-color)",
+                      color: "var(--text-secondary)",
+                      fontSize: "0.85rem",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {[
+                      "SKU",
+                      "Product",
+                      "Pack",
+                      "HSN",
+                      "Qty",
+                      "Weight",
+                      "Orders",
+                      "Gross (MRP)",
+                      "Discount",
+                      "Net Sales",
+                      "Taxable",
+                      "CGST",
+                      "SGST",
+                      "IGST",
+                    ].map((heading) => (
+                      <th
+                        key={heading}
+                        style={{ padding: "8px 12px", fontWeight: 500 }}
+                      >
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {skuSales.map((row) => (
+                    <tr
+                      key={`${row.productId}|${row.packLabel}|${row.hsn}`}
+                      style={{ borderBottom: "1px solid var(--border-color)" }}
+                    >
+                      <td
+                        style={{
+                          padding: "8px 12px",
+                          fontFamily: "monospace",
+                          fontSize: "0.85rem",
+                          whiteSpace: "nowrap",
+                          color: row.sku ? undefined : "var(--text-secondary)",
+                        }}
+                      >
+                        {row.sku ?? "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 500 }}>
+                        {row.name}
+                      </td>
+                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                        {row.packLabel}
+                      </td>
+                      <td
+                        style={{
+                          padding: "8px 12px",
+                          fontFamily: "monospace",
+                          color: row.hsn === "-" ? "var(--warning)" : undefined,
+                        }}
+                      >
+                        {row.hsn}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>{row.quantity}</td>
+                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                        {row.weightKg > 0 ? formatWeight(row.weightKg) : "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>{row.orders}</td>
+                      <td style={{ padding: "8px 12px" }}>
+                        ₹{formatCurrency(row.grossValue)}
+                      </td>
+                      <td style={{ padding: "8px 12px", color: "var(--danger)" }}>
+                        ₹{formatCurrency(row.discount)}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 500 }}>
+                        ₹{formatCurrency(row.netValue)}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        ₹{formatCurrency(row.taxableValue)}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        ₹{formatCurrency(row.cgst)}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        ₹{formatCurrency(row.sgst)}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        ₹{formatCurrency(row.igst)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ fontWeight: 600 }}>
+                    <td style={{ padding: "8px 12px" }} colSpan={4}>
+                      Total
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>{skuTotals.quantity}</td>
+                    <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                      {formatWeight(skuTotals.weightKg)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }} />
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.grossValue)}
+                    </td>
+                    <td style={{ padding: "8px 12px", color: "var(--danger)" }}>
+                      ₹{formatCurrency(skuTotals.discount)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.netValue)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.taxableValue)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.cgst)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.sgst)}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      ₹{formatCurrency(skuTotals.igst)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </Card>
 

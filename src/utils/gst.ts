@@ -3,7 +3,9 @@
 // GST-inclusive-price tax split) so the numbers a CA sees in this report
 // always reconcile with the numbers on the actual tax invoices the
 // storefront generates for the same orders.
-import type { Order } from "../store/orderStore";
+import type { CartItem, Order } from "../store/orderStore";
+import type { Product } from "../types/product";
+import { formatWeight, parseWeightKg } from "./weight";
 
 export const SELLER = {
   name: "ANNVRIKSH",
@@ -180,11 +182,20 @@ export interface OrderTaxBreakdown {
  * key, so every item silently fell back to "-" and nothing consolidated
  * by its real HSN code at all.
  */
-export function computeOrderTax(order: Order): OrderTaxBreakdown {
-  const buyerState = order.delivery_address?.state ?? null;
-  const intraState = isIntraState(buyerState);
-  const buyerStateCode = getStateCode(buyerState);
+interface ItemTaxLine {
+  item: CartItem;
+  hsn: string;
+  /** GST-inclusive line value after the pro-rated coupon discount. */
+  lineTotal: number;
+  taxableValue: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
 
+/** Per-item half of computeOrderTax — shared with computeSkuSales so the
+ * SKU-wise table always adds up to the HSN summary's product rows. */
+function computeItemTaxLines(order: Order, intraState: boolean): ItemTaxLine[] {
   const items = order.items ?? [];
   const subtotal =
     order.subtotal_amount ??
@@ -192,6 +203,23 @@ export function computeOrderTax(order: Order): OrderTaxBreakdown {
   const couponDiscount = round2(order.coupon_discount_amount ?? 0);
   const discountRatio =
     subtotal > 0 ? Math.max(0, (subtotal - couponDiscount) / subtotal) : 1;
+
+  return items.map((item) => {
+    const amount = round2(item.price * item.quantity);
+    const lineTotal = round2(amount * discountRatio);
+    const { taxableValue, taxAmount } = splitInclusiveTax(lineTotal);
+    const cgst = intraState ? round2(taxAmount / 2) : 0;
+    const sgst = intraState ? round2(taxAmount - cgst) : 0;
+    const igst = intraState ? 0 : taxAmount;
+    const hsn = item.hsn_code?.trim() || UNASSIGNED_HSN;
+    return { item, hsn, lineTotal, taxableValue, cgst, sgst, igst };
+  });
+}
+
+export function computeOrderTax(order: Order): OrderTaxBreakdown {
+  const buyerState = order.delivery_address?.state ?? null;
+  const intraState = isIntraState(buyerState);
+  const buyerStateCode = getStateCode(buyerState);
 
   const hsnLines: HsnTaxLine[] = [];
   const hsnDescriptions = new Map<string, Set<string>>();
@@ -236,15 +264,15 @@ export function computeOrderTax(order: Order): OrderTaxBreakdown {
   let goodsIgst = 0;
   let goodsTotal = 0;
 
-  for (const item of items) {
-    const amount = round2(item.price * item.quantity);
-    const lineTotal = round2(amount * discountRatio);
-    const { taxableValue, taxAmount } = splitInclusiveTax(lineTotal);
-    const cgst = intraState ? round2(taxAmount / 2) : 0;
-    const sgst = intraState ? round2(taxAmount - cgst) : 0;
-    const igst = intraState ? 0 : taxAmount;
-    const hsn = item.hsn_code?.trim() || "-";
-
+  for (const {
+    item,
+    hsn,
+    lineTotal,
+    taxableValue,
+    cgst,
+    sgst,
+    igst,
+  } of computeItemTaxLines(order, intraState)) {
     goodsTaxable = round2(goodsTaxable + taxableValue);
     goodsCgst = round2(goodsCgst + cgst);
     goodsSgst = round2(goodsSgst + sgst);
@@ -367,6 +395,133 @@ export function findItemsWithoutHsn(orders: Order[]): UnassignedHsnItem[] {
   }
 
   return Array.from(groups.values()).sort((a, b) => b.quantity - a.quantity);
+}
+
+export interface SkuSalesRow {
+  /** From the live product/variant — order snapshots don't carry SKUs. */
+  sku: string | null;
+  productId: string;
+  name: string;
+  packLabel: string;
+  hsn: string;
+  quantity: number;
+  weightKg: number;
+  orders: number;
+  /** At MRP (before product discount and coupon), GST-inclusive. */
+  grossValue: number;
+  /** Product discount + this line's pro-rated share of the coupon. */
+  discount: number;
+  /** GST-inclusive value actually charged — what the tax is split from. */
+  netValue: number;
+  taxableValue: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
+
+// The snapshot's `price` is already net of the product discount (`discount`,
+// a percentage), so MRP is recovered from the two.
+function unitMrp(item: CartItem): number {
+  const discountPercent = Number(item.discount) || 0;
+  if (discountPercent <= 0 || discountPercent >= 100) return item.price;
+  return round2(item.price / (1 - discountPercent / 100));
+}
+
+function findSku(
+  product: Product | undefined,
+  item: CartItem,
+  packKg: number,
+): string | null {
+  if (!product) return null;
+  const variants = product.variants ?? [];
+  // Older orders of a product that later gained variants have no variantId —
+  // match those to the variant of the same pack size instead.
+  const variant =
+    (item.variantId != null &&
+      variants.find((v) => String(v.id) === String(item.variantId))) ||
+    (packKg > 0 && variants.find((v) => parseWeightKg(v.weight) === packKg)) ||
+    undefined;
+  return variant?.sku?.trim() || product.sku?.trim() || null;
+}
+
+/**
+ * Line-level sales per product pack size — the variant split of the HSN
+ * summary's product rows. Grouped by product + pack weight (so "200 gm",
+ * "200 gms" and the matching variant all land together) + HSN (so every row
+ * sits under exactly one HSN summary row). Cancelled orders are skipped,
+ * same as computeGstSummary.
+ */
+export function computeSkuSales(
+  orders: Order[],
+  products: Product[],
+): SkuSalesRow[] {
+  const productById = new Map(products.map((p) => [String(p.id), p]));
+  const groups = new Map<string, SkuSalesRow & { orderIds: Set<string> }>();
+
+  for (const order of orders) {
+    if (order.status === "cancelled") continue;
+    const intraState = isIntraState(order.delivery_address?.state);
+
+    for (const line of computeItemTaxLines(order, intraState)) {
+      const { item } = line;
+      const productId = String(item.id);
+      const packKg = parseWeightKg(item.weight);
+      const packLabel =
+        packKg > 0
+          ? formatWeight(packKg)
+          : item.weight?.trim() || item.variantLabel || "—";
+      const key = `${productId}|${packKg || packLabel}|${line.hsn}`;
+      const grossValue = round2(unitMrp(item) * item.quantity);
+
+      const existing = groups.get(key);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.weightKg += packKg * item.quantity;
+        existing.orderIds.add(order.id);
+        existing.grossValue = round2(existing.grossValue + grossValue);
+        existing.netValue = round2(existing.netValue + line.lineTotal);
+        existing.taxableValue = round2(existing.taxableValue + line.taxableValue);
+        existing.cgst = round2(existing.cgst + line.cgst);
+        existing.sgst = round2(existing.sgst + line.sgst);
+        existing.igst = round2(existing.igst + line.igst);
+      } else {
+        const product = productById.get(productId);
+        groups.set(key, {
+          sku: findSku(product, item, packKg),
+          productId,
+          // Live name, so a product renamed between orders reads as one.
+          name: product?.name ?? item.name,
+          packLabel,
+          hsn: line.hsn,
+          quantity: item.quantity,
+          weightKg: packKg * item.quantity,
+          orders: 0,
+          orderIds: new Set([order.id]),
+          grossValue,
+          discount: 0,
+          netValue: line.lineTotal,
+          taxableValue: line.taxableValue,
+          cgst: line.cgst,
+          sgst: line.sgst,
+          igst: line.igst,
+        });
+      }
+    }
+  }
+
+  return Array.from(groups.values())
+    .map(({ orderIds, ...row }) => ({
+      ...row,
+      orders: orderIds.size,
+      discount: round2(Math.max(0, row.grossValue - row.netValue)),
+    }))
+    .sort(
+      (a, b) =>
+        hsnSortRank(a.hsn) - hsnSortRank(b.hsn) ||
+        a.hsn.localeCompare(b.hsn, undefined, { numeric: true }) ||
+        a.name.localeCompare(b.name) ||
+        a.weightKg / a.quantity - b.weightKg / b.quantity,
+    );
 }
 
 export interface StateTaxRow {
